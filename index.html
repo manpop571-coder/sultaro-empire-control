@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b1220">
+  <meta name="referrer" content="no-referrer">
+  <title>SULTARO · Farm control</title>
+  <link rel="icon" href="./mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./style.css">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script defer src="./config.js"></script>
+  <script defer src="./ui.js"></script>
+  <script defer src="./app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to dashboard</a>
+  <div id="app" aria-busy="true">
+    <div class="boot-screen"><img src="./mark.svg" width="58" height="58" alt=""><strong>SULTARO</strong><span>Opening your farm dashboard…</span><span class="loader" aria-hidden="true"></span></div>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="modal-root"></div>
+  <noscript><p class="noscript">Enable JavaScript and open this dashboard from the SULTARO Telegram bot.</p></noscript>
+</body>
+</html>
