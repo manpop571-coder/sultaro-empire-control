@@ -285,7 +285,7 @@
   }
   function brand() {
     const image = el("img");
-    image.src = "./mark.svg?v=20261110-farm-activities";
+    image.src = "./mark.svg?v=20261110-defaults";
     image.alt = "";
     image.width = 43;
     image.height = 43;
@@ -1068,7 +1068,7 @@
     "demo-3": U.activities.map(row => ({ ...row, enabled: ["hero_hall", "hero_upgrade", "pet_care", "alliance_help"].includes(row.id) })),
   };
   const previewPrefs = {
-    gathering: { slots: [1003, 1002, 1003, 1002, 0, 0], version: 1 },
+    gathering: { slots: [1, 1, 1, 1, 1, 1], version: 1 },
     research: { value: "resource", version: 1 },
     fountain: { value: 1023, version: 1 },
     heroes: { hero_ids: [5503027, 5501042], version: 1 },
@@ -1144,6 +1144,7 @@
     state.catalog = {
       gathering: [
         { id: 0, name: "Disabled" },
+        { id: 1, name: "Random" },
         { id: 1003, name: "Wood" },
         { id: 1002, name: "Wheat" },
         { id: 1004, name: "Iron" },

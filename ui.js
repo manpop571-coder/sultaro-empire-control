@@ -29,7 +29,7 @@
   ].map(([id, name, group]) => ({ id, name, group }));
   // Stable game identifiers keep these choices independent of API display language.
   const choiceLabels = {
-    gathering: { 0: "Disabled", 1002: "Wheat", 1003: "Wood", 1004: "Iron", 1005: "Mithril" },
+    gathering: { 0: "Disabled", 1: "Random", 1002: "Wheat", 1003: "Wood", 1004: "Iron", 1005: "Mithril" },
     fountain: {
       0: "Disabled", 1022: "Safe food", 1023: "Safe wood",
       1024: "Safe iron", 1006: "Steel", 1025: "Safe mithril",
