@@ -1,4 +1,4 @@
 window.SULTARO_CONFIG = {
-  "apiBaseUrl": "https://feeds-cartoons-seeker-paying.trycloudflare.com",
+  "apiBaseUrl": "https://him-coordinator-ict-newly.trycloudflare.com",
   "botUsername": "SULTARO_BOT"
 };
