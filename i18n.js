@@ -56,12 +56,36 @@
     [/^March (\d+) resource$/, "March {0} resource"],
     [/^(\d+) farms$/, "{0} farms"],
     [/^(\d+) selected$/, "{0} selected"],
+    [/^(\d+) farms selected$/, "{0} farms selected"],
+    [/^Choices saved for (\d+) farms\.$/, "Choices saved for {0} farms."],
     [/^Applies to Farm (\d+) only\.$/, "Applies to farm {0} only."],
   ];
+  const unnamed = {
+    "zh-Hant": ["英雄 {0}", "寵物 {0}"], "zh-Hans": ["英雄 {0}", "宠物 {0}"],
+    en: ["Hero {0}", "Pet {0}"], id: ["Pahlawan {0}", "Hewan peliharaan {0}"],
+    fr: ["Héros {0}", "Animal {0}"], de: ["Held {0}", "Haustier {0}"],
+    th: ["ฮีโร่ {0}", "สัตว์เลี้ยง {0}"], pt: ["Herói {0}", "Animal de estimação {0}"],
+    es: ["Héroe {0}", "Mascota {0}"], tr: ["Kahraman {0}", "Evcil hayvan {0}"],
+    it: ["Eroe {0}", "Animale {0}"], ru: ["Герой {0}", "Питомец {0}"],
+    vi: ["Anh hùng {0}", "Thú cưng {0}"], ja: ["英雄 {0}", "ペット {0}"],
+    ko: ["영웅 {0}", "펫 {0}"], ar: ["البطل {0}", "الحيوان {0}"],
+  };
   function format(template, args) {
     return template.replace(/\{(\d+)\}/g, (_, index) =>
       args[index] === undefined ? "" : String(args[index]),
     );
+  }
+  function gameName(kind, id) {
+    const category = kind === "pets" ? "pets" : "heroes";
+    const names = root.SULTARO_GAME_NAMES && root.SULTARO_GAME_NAMES[category];
+    const row = names && Object.prototype.hasOwnProperty.call(names, String(id)) ? names[id] : null;
+    if (row) {
+      for (const locale of [current, "en"]) {
+        if (Object.prototype.hasOwnProperty.call(row, locale) &&
+            typeof row[locale] === "string" && row[locale].trim()) return row[locale];
+      }
+    }
+    return format(unnamed[current][category === "pets" ? 1 : 0], [id]);
   }
   function t(value, args = []) {
     if (value == null) return "";
@@ -91,7 +115,7 @@
   function skip(node) {
     return (
       node.parentElement &&
-      node.parentElement.closest("script,style,[data-language-select],[data-i18n-skip]")
+      node.parentElement.closest("script,style,[data-language-select],[data-i18n-skip],[data-game-kind]")
     );
   }
   function translateNode(node) {
@@ -105,6 +129,12 @@
       originals.set(node, saved);
       if (node.nodeValue !== next) node.nodeValue = next;
     } else if (node.nodeType === 1) {
+      // Game names are already localized by ID; never feed them to generic UI translation.
+      if (node.hasAttribute("data-game-kind") && node.hasAttribute("data-game-id")) {
+        const next = gameName(node.dataset.gameKind, node.dataset.gameId);
+        if (node.textContent !== next) node.textContent = next;
+        return;
+      }
       if (node.matches("script,style,[data-language-select],[data-i18n-skip]")) return;
       let saved = attributes.get(node) || {};
       for (const key of ["placeholder", "aria-label", "title"]) {
@@ -150,6 +180,7 @@
   root.SultaroI18n = {
     languages,
     t,
+    gameName,
     setLocale,
     locale: () => current,
     observe,

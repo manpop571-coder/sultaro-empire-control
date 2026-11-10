@@ -1817,3 +1817,80 @@ input[type=checkbox] { accent-color: #ffb849; }
 @media (prefers-reduced-motion: reduce) {
   *, *:before, *:after { animation: none !important; transition: none !important; }
 }
+
+/* Per-farm activity selection: all assigned targets, three compact columns. */
+.activity-scope {
+  padding: 22px;
+  margin-bottom: 22px;
+}
+.activity-scope > .field { max-width: 430px; }
+.activity-target-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 23px 0 13px;
+  padding-top: 20px;
+  border-top: 1px solid #92552b55;
+}
+.activity-target-heading h2 {
+  margin: 0;
+  color: #ffdfa0;
+  font-size: 13px;
+  font-weight: 500;
+}
+.activity-target-heading .button-row { flex-wrap: wrap; }
+.activity-target-heading button {
+  min-height: 29px;
+  padding: 5px 9px;
+  font-size: 10px;
+}
+.activity-target-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 250px;
+  overflow-y: auto;
+  padding: 2px;
+  scrollbar-width: thin;
+}
+.activity-target {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid #86502c;
+  border-radius: 7px;
+  background: #23100b;
+  color: #dcb795;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.activity-target input { margin: 0; }
+.activity-target span { min-width: 0; overflow-wrap: anywhere; }
+.activity-target:has(input:checked) {
+  background: linear-gradient(125deg, #85451b66, #42200f66);
+  border-color: #cc934f;
+  color: #ffe0a4;
+}
+.activity-discard-prompt {
+  border: 1px solid #c28c4d;
+  border-radius: 9px;
+  background: #71371133;
+  margin-top: 16px;
+  padding: 14px;
+}
+.activity-discard-prompt p { margin: 0 0 10px; font-size: 11px; color: #ffe1af; }
+.activity-discard-prompt .button-row { flex-wrap: wrap; }
+@media (max-width:650px) {
+  .activity-scope { padding: 18px 15px; margin-bottom: 18px; }
+  .activity-target-heading { margin-top: 19px; padding-top: 17px; gap: 10px; }
+  .activity-target-heading h2 { font-size: 12px; }
+  .activity-target-grid { gap: 7px; max-height: 228px; }
+  .activity-target { gap: 6px; padding: 7px; font-size: 10px; min-height: 36px; }
+  .activity-target input { width: 15px; height: 15px; }
+}

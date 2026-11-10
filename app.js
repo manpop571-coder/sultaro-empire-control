@@ -21,6 +21,18 @@
     pageNumber: 0,
     selectedFarmId: null,
     activities: U.normalizeActivities([]),
+    activityFarms: [],
+    activityFarmsLoaded: false,
+    activityFarmsLoading: false,
+    activityFarmsError: false,
+    activitySourceId: null,
+    activityTargets: new Set(),
+    activitySavedRows: [],
+    activityLoading: false,
+    activityReady: false,
+    activityLoadError: false,
+    activityPendingId: null,
+    activityExcludedSaved: false,
     settings: {},
     settingsDraft: {},
     prefs: null,
@@ -34,6 +46,8 @@
     toastTimer,
     farmGeneration = 0,
     prefGeneration = 0,
+    activityFarmGeneration = 0,
+    activityGeneration = 0,
     fieldNumber = 0;
   const shapes = {
     castle: '<path d="M3 21V8h4V4h3v4h4V4h3v4h4v13M2 21h20M10 21v-6h4v6M7 12h1m8 0h1"/>',
@@ -100,10 +114,26 @@
       const option = el("option", "", row.name);
       option.value = row.id;
       if (row.raw) option.dataset.i18nSkip = "true";
+      if (row.gameKind) {
+        option.dataset.gameKind = row.gameKind;
+        option.dataset.gameId = String(row.id);
+        option.dir = "auto";
+      }
       node.append(option);
     }
     node.value = String(value == null ? "" : value);
     return node;
+  }
+  function catalogChoices(kind) {
+    const labels = U.choiceLabels[kind] || {};
+    return (state.catalog[kind] || []).map((row) => {
+      const known = Object.prototype.hasOwnProperty.call(labels, String(row.id));
+      return {
+        ...row,
+        name: known ? labels[row.id] : I.t(kind === "research" ? "Research" : "Resources") + " " + row.id,
+        raw: !known,
+      };
+    });
   }
   function field(label, control, help) {
     if (!control.id) control.id = "choice-" + ++fieldNumber;
@@ -147,6 +177,13 @@
   function syncLocks() {
     for (const node of document.querySelectorAll("[data-mutation]"))
       node.disabled = preview || state.mutations > 0;
+    for (const node of document.querySelectorAll("[data-activity-source]"))
+      node.disabled = state.mutations > 0;
+    for (const node of document.querySelectorAll("[data-activity-save]"))
+      node.disabled = preview || state.mutations > 0 || !state.activityReady ||
+        state.activityLoading || !state.activityTargets.size || state.activityTargets.size > 1000;
+    for (const node of document.querySelectorAll("[data-activity-all]"))
+      node.disabled = preview || state.mutations > 0 || state.activityFarms.length > 1000;
   }
   async function api(path, method = "GET", body) {
     if (preview) throw new Error("This is a read-only preview.");
@@ -206,6 +243,8 @@
     state.page = page;
     render();
     window.scrollTo({ top: 0, behavior: "instant" });
+    if (page === "activities" && !state.activityFarmsLoaded && !state.activityFarmsLoading)
+      loadActivityFarms();
     if (
       page === "settings" &&
       state.tab !== "shared" &&
@@ -246,7 +285,7 @@
   }
   function brand() {
     const image = el("img");
-    image.src = "./mark.svg?v=20261110-forge";
+    image.src = "./mark.svg?v=20261110-farm-activities";
     image.alt = "";
     image.width = 43;
     image.height = 43;
@@ -492,65 +531,207 @@
     }
     main.append(grid, pagination());
   }
+  async function loadActivityFarms() {
+    const generation = ++activityFarmGeneration;
+    state.activityFarmsLoading = true;
+    state.activityFarmsError = false;
+    if (state.page === "activities") render();
+    try {
+      const all = [], seen = new Set();
+      if (preview) {
+        all.push(...state.farms.map(farm => ({ id: farm.id, farm_number: farm.farm_number })));
+      } else {
+        let page = 0;
+        while (true) {
+          const result = await api("/api/activity-farms?page=" + page + "&limit=100");
+          if (generation !== activityFarmGeneration) return;
+          for (const farm of result.rows || []) {
+            if (!seen.has(String(farm.id))) { all.push(farm); seen.add(String(farm.id)); }
+          }
+          if (!result.rows.length || (page + 1) * 100 >= result.total) break;
+          page++;
+        }
+      }
+      state.activityFarms = all;
+      state.activityFarmsLoaded = true;
+      state.activityFarmsLoading = false;
+      if (!all.length) {
+        state.activitySourceId = null;
+        state.activityTargets.clear();
+        state.activityReady = false;
+        if (state.page === "activities") render();
+        return;
+      }
+      await loadFarmActivities(all[0].id);
+    } catch (error) {
+      if (generation !== activityFarmGeneration) return;
+      state.activityFarmsLoading = false;
+      state.activityFarmsError = true;
+      if (state.page === "activities") render();
+      toast(error.message, true);
+    }
+  }
+  async function loadFarmActivities(id, resetTargets = true) {
+    const generation = ++activityGeneration;
+    state.activitySourceId = String(id);
+    if (resetTargets) state.activityTargets = new Set([String(id)]);
+    state.activityLoading = true;
+    state.activityReady = false;
+    state.activityLoadError = false;
+    state.activityPendingId = null;
+    state.activityExcludedSaved = false;
+    state.dirty = false;
+    if (state.page === "activities") render();
+    try {
+      const result = preview
+        ? { farm_id: id, rows: U.copy(previewActivityChoices[id] || []) }
+        : await api("/api/activities?farm_id=" + encodeURIComponent(id));
+      if (generation !== activityGeneration || String(id) !== state.activitySourceId) return;
+      if (String(result.farm_id) !== String(id)) throw new Error("Please refresh the page before trying again.");
+      state.activities = U.normalizeActivities(result.rows);
+      state.activitySavedRows = U.copy(state.activities);
+      state.activityLoading = false;
+      state.activityReady = true;
+      if (state.page === "activities") render();
+    } catch (error) {
+      if (generation !== activityGeneration || String(id) !== state.activitySourceId) return;
+      state.activityLoading = false;
+      state.activityLoadError = true;
+      if (state.page === "activities") render();
+      toast(error.message, true);
+    }
+  }
+  function changeActivitySource(id) {
+    if (String(id) === state.activitySourceId) return;
+    if (state.dirty) {
+      state.activityPendingId = String(id);
+      render();
+      return;
+    }
+    loadFarmActivities(id);
+  }
+  function syncActivityTargets() {
+    for (const control of document.querySelectorAll("[data-activity-target]"))
+      control.checked = state.activityTargets.has(control.value);
+    for (const node of document.querySelectorAll("[data-activity-target-count]"))
+      node.textContent = state.activityTargets.size + " farms selected";
+    syncLocks();
+  }
+  function activityScope() {
+    const box = el("section", "activity-scope panel");
+    const source = select(state.activityFarms.map(farm => ({ id: farm.id, name: farmName(farm) })), state.activitySourceId);
+    source.dataset.activitySource = "true";
+    source.addEventListener("change", () => changeActivitySource(source.value));
+    box.append(field("View farm choices", source, "Choose a farm to view its saved activities."));
+    if (state.activityPendingId) {
+      const prompt = el("div", "activity-discard-prompt");
+      const discard = button("Discard changes", () => loadFarmActivities(state.activityPendingId), "subtle");
+      discard.dataset.activityDiscard = "true";
+      const keep = button("Keep editing", () => { state.activityPendingId = null; render(); }, "subtle");
+      keep.dataset.activityKeep = "true";
+      prompt.append(el("p", "", "Discard unsaved choices and view another farm?"), add(el("div", "button-row"), keep, discard));
+      box.append(prompt);
+    }
+    const all = locked(button("Select all", () => {
+      if (state.activityFarms.length > 1000) return;
+      state.activityTargets = new Set(state.activityFarms.map(farm => String(farm.id)));
+      syncActivityTargets();
+    }, "subtle"));
+    all.dataset.activityAll = "true";
+    const none = locked(button("Clear selection", () => { state.activityTargets.clear(); syncActivityTargets(); }, "subtle"));
+    none.dataset.activityClear = "true";
+    box.append(add(el("div", "activity-target-heading"), el("h2", "", "Apply these choices to"), add(el("div", "button-row"), all, none)));
+    const targets = el("div", "activity-target-grid");
+    for (const farm of state.activityFarms) {
+      const check = locked(checkbox(state.activityTargets.has(String(farm.id))));
+      check.value = String(farm.id);
+      check.dataset.activityTarget = "true";
+      check.addEventListener("change", () => {
+        if (check.checked && state.activityTargets.size >= 1000) {
+          check.checked = false;
+          toast("Choose up to 1000 farms at a time.", true);
+          return;
+        }
+        if (check.checked) state.activityTargets.add(check.value);
+        else state.activityTargets.delete(check.value);
+        syncActivityTargets();
+      });
+      targets.append(add(el("label", "activity-target"), check, el("span", "", farmName(farm))));
+    }
+    box.append(targets, el("p", "card-help", "Only checked farms will be changed."));
+    return box;
+  }
+  async function saveFarmActivities() {
+    if (preview || state.mutations || !state.activityReady || state.activityLoading) return;
+    const targets = Array.from(state.activityTargets);
+    if (!targets.length || targets.length > 1000) return;
+    const source = state.activitySourceId;
+    const result = await api("/api/activities", "PATCH", {
+      farm_ids: targets,
+      rows: state.activities.map(row => ({ id: row.id, enabled: row.enabled })),
+    });
+    if (source === state.activitySourceId) {
+      if (targets.includes(source)) {
+        state.activities = U.normalizeActivities(result.rows);
+        state.activitySavedRows = U.copy(state.activities);
+        state.dirty = false;
+        state.activityExcludedSaved = false;
+        state.activityPendingId = null;
+      } else {
+        state.dirty = !U.sameActivityChoices(state.activities, state.activitySavedRows);
+        state.activityExcludedSaved = true;
+      }
+      render();
+    }
+    toast("Choices saved for " + result.applied_count + " farms.");
+  }
   function renderActivities() {
     heading("Activities", "Choose what your farms should take care of.");
+    if (state.activityFarmsError) {
+      main.append(note("Could not load farm choices. Please try again."), button("Try again", loadActivityFarms, "subtle", "refresh"));
+      return;
+    }
+    if (!state.activityFarmsLoaded || state.activityFarmsLoading) {
+      main.append(el("div", "loading-copy", "Loading your choices…"));
+      return;
+    }
+    if (!state.activityFarms.length) { main.append(empty()); return; }
+    main.append(activityScope());
+    if (state.activityLoading) {
+      main.append(el("div", "loading-copy", "Loading your choices…"));
+      return;
+    }
+    if (state.activityLoadError || !state.activityReady) {
+      main.append(note("Could not load farm choices. Please try again."), button("Try again", () => loadFarmActivities(state.activitySourceId, false), "subtle", "refresh"));
+      return;
+    }
     const grid = el("div", "activity-grid");
     for (const group of U.groups) {
-      const rows = state.activities.filter((row) => row.group === group.id),
-        card = el("section", "activity-card panel");
+      const rows = state.activities.filter(row => row.group === group.id), card = el("section", "activity-card panel");
       card.append(panelTitle(group.name, null, group.icon));
       for (const activity of rows) {
         const check = locked(checkbox(activity.enabled));
         check.id = "activity-" + activity.id;
         check.addEventListener("change", () => {
           state.activities = U.toggle(state.activities, activity.id, check.checked);
-          state.dirty = true;
+          state.dirty = !U.sameActivityChoices(state.activities, state.activitySavedRows);
+          if (!state.dirty) state.activityPendingId = null;
+          state.activityExcludedSaved = false;
           render();
         });
         card.append(switchLabel(activity.name, check));
       }
-      if (group.id === "castle")
-        card.append(
-          el(
-            "p",
-            "card-help",
-            "Castle upgrades and resource building upgrades are separate choices.",
-          ),
-        );
+      if (group.id === "castle") card.append(el("p", "card-help", "Castle upgrades and resource building upgrades are separate choices."));
       grid.append(card);
     }
-    const save = locked(
-      button(
-        "Save choices",
-        action(async () => {
-          const result = await api("/api/activities", "PATCH", {
-            rows: state.activities.map((row) => ({ id: row.id, enabled: row.enabled })),
-          });
-          state.activities = U.normalizeActivities(result.rows);
-          state.dirty = false;
-          toast("Choices saved.");
-          render();
-        }),
-        "primary",
-        "check",
-      ),
-    );
-    main.append(
-      grid,
-      add(
-        el("div", "savebar"),
-        add(
-          el("div"),
-          el("strong", "", state.activities.filter((row) => row.enabled).length + " selected"),
-          el(
-            "span",
-            "",
-            state.dirty ? "Unsaved changes" : "These choices apply to all your farms.",
-          ),
-        ),
-        save,
-      ),
-    );
+    const save = locked(button("Save choices", action(saveFarmActivities), "primary", "check"));
+    save.dataset.activitySave = "true";
+    const count = el("strong", "", state.activityTargets.size + " farms selected");
+    count.dataset.activityTargetCount = "true";
+    const help = state.activityExcludedSaved
+      ? "The displayed farm was not selected. Its saved choices are unchanged."
+      : state.dirty ? "Unsaved changes" : "Only checked farms will be changed.";
+    main.append(grid, add(el("div", "savebar"), add(el("div"), count, el("span", "", help)), save));
   }
   async function loadPreferences(id) {
     if (!id) return;
@@ -660,7 +841,7 @@
       const slots = el("div", "slot-grid"),
         inputs = [];
       for (let index = 0; index < 6; index++) {
-        const choice = locked(select(state.catalog.gathering || [], draft.slots[index] || 0));
+        const choice = locked(select(catalogChoices("gathering"), draft.slots[index] || 0));
         choice.setAttribute("aria-label", "March " + (index + 1) + " resource");
         choice.addEventListener("change", () => (draft.slots[index] = Number(choice.value)));
         inputs.push(choice);
@@ -693,6 +874,7 @@
         inputs = [];
       for (const hero of state.catalog.heroes || []) {
         const check = locked(checkbox((draft.hero_ids || []).includes(hero.id)));
+        check.value = String(hero.id);
         check.addEventListener(
           "change",
           () => (draft.hero_ids = inputs.filter((row) => row[1].checked).map((row) => row[0])),
@@ -700,9 +882,14 @@
         inputs.push([hero.id, check]);
         const mark = el("span", "hero-mark", "✦");
         mark.style.color = U.safeColor(hero.color);
-        const name = raw("span", "hero-name", hero.name);
+        const name = raw("span", "hero-name", I.gameName("heroes", hero.id));
+        name.dataset.gameKind = "heroes";
+        name.dataset.gameId = String(hero.id);
+        name.dir = "auto";
         name.style.color = U.safeColor(hero.color);
-        grid.append(add(el("label", "hero-choice"), mark, name, check));
+        const row = add(el("label", "hero-choice"), mark, name, check);
+        row.dataset.heroId = String(hero.id);
+        grid.append(row);
       }
       form.append(
         grid,
@@ -720,7 +907,7 @@
         ),
       );
       const grid = el("div", "choice-grid");
-      for (const choice of state.catalog[section] || []) {
+      for (const choice of catalogChoices(section)) {
         const item = locked(
           button(
             choice.name,
@@ -797,8 +984,9 @@
             .filter((row) => Number(row.id) !== 0)
             .map((row) => ({
               ...row,
-              name: U.petNames[row.id] || row.name,
-              raw: !U.petNames[row.id],
+              name: I.gameName("pets", row.id),
+              raw: true,
+              gameKind: "pets",
             })),
         ],
         draft.pet_preferred_id || 0,
@@ -874,11 +1062,16 @@
     if (message) card.append(button("Try again", boot, "subtle", "refresh"));
     app.append(add(el("main", "gate"), card));
   }
+  const previewActivityChoices = {
+    "demo-1": U.activities.map(row => ({ ...row, enabled: ["upgrade", "rewards", "gathering", "troop_training", "hero_upgrade", "research", "alliance_help", "chapters"].includes(row.id) })),
+    "demo-2": U.activities.map(row => ({ ...row, enabled: ["building_upgrade", "gathering", "rewards", "hospital"].includes(row.id) })),
+    "demo-3": U.activities.map(row => ({ ...row, enabled: ["hero_hall", "hero_upgrade", "pet_care", "alliance_help"].includes(row.id) })),
+  };
   const previewPrefs = {
     gathering: { slots: [1003, 1002, 1003, 1002, 0, 0], version: 1 },
     research: { value: "resource", version: 1 },
     fountain: { value: 1023, version: 1 },
-    heroes: { hero_ids: [1, 2], version: 1 },
+    heroes: { hero_ids: [5503027, 5501042], version: 1 },
   };
   function seedPreview() {
     state.user = { id: 123456789, first_name: "Alex", locale: "en" };
@@ -975,16 +1168,16 @@
         { id: "special", name: "Special" },
       ],
       pets: [
-        { id: 1263, name: "Falcon" },
-        { id: 1262, name: "Lion" },
+        { id: 1263, name: "الصقر" },
+        { id: 1262, name: "الأسد" },
       ],
       heroes: [
-        { id: 1, name: "Mehmed II", color: "#d8b76a" },
-        { id: 2, name: "Kara Murad", color: "#d8b76a" },
-        { id: 3, name: "Osman", color: "#b998dd" },
-        { id: 4, name: "Selim", color: "#b998dd" },
-        { id: 5, name: "Ibrahim", color: "#80acd3" },
-        { id: 6, name: "Mustafa", color: "#80acd3" },
+        { id: 5503027, name: "ابن بطوطة", color: "#FF465A" },
+        { id: 5501042, name: "السلطان محمد الفاتح", color: "#FF465A" },
+        { id: 5501027, name: "أتيلا", color: "#FF9946" },
+        { id: 5501013, name: "أرطغرل", color: "#FF9946" },
+        { id: 5501006, name: "الزعيم عمر", color: "#D446FF" },
+        { id: 5501008, name: "السيد محمود", color: "#D446FF" },
       ],
     };
     state.prefs = U.copy(previewPrefs);
@@ -1010,17 +1203,15 @@
       if (tg.setBackgroundColor) tg.setBackgroundColor("#100806");
     }
     try {
-      const [me, catalog, activities, settings, farms] = await Promise.all([
+      const [me, catalog, settings, farms] = await Promise.all([
         api("/api/me"),
         api("/api/catalog"),
-        api("/api/activities"),
         api("/api/settings"),
         api("/api/farms?page=0&limit=8"),
       ]);
       state.user = me.user;
       I.setLocale(me.user.locale || "en");
       state.catalog = catalog;
-      state.activities = U.normalizeActivities(activities.rows);
       state.settings = settings;
       state.settingsDraft = U.copy(settings);
       state.farms = farms.rows || [];

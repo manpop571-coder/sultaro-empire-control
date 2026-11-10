@@ -22,6 +22,10 @@ assert.equal(choices.find((row) => row.id === "upgrade").enabled, false);
 assert.equal(choices.find((row) => row.id === "building_upgrade").enabled, true);
 choices = U.toggle(choices, "upgrade", true);
 assert.equal(choices.find((row) => row.id === "building_upgrade").enabled, false);
+const savedChoices = U.normalizeActivities([{ id: "upgrade", enabled: true }]);
+assert.ok(U.sameActivityChoices(savedChoices, savedChoices.slice().reverse()));
+assert.ok(!U.sameActivityChoices(savedChoices, U.toggle(savedChoices, "rewards", true)));
+assert.ok(!U.sameActivityChoices(savedChoices, []));
 assert.equal(
   U.apiUrl("https://api.example.test/", "/api/activities", "public.test"),
   "https://api.example.test/api/activities",
@@ -47,7 +51,7 @@ assert.equal(U.safeColor("#D6B974"), "#D6B974");
 assert.equal(U.safeColor("url(https://example.test)"), "#c7c2ad");
 const sandbox = { window: {} };
 vm.createContext(sandbox);
-for (const name of ["locales.js", "i18n.js"])
+for (const name of ["locales.js", "game-names.js", "i18n.js"])
   vm.runInContext(fs.readFileSync(path.join(__dirname, name), "utf8"), sandbox);
 const I = sandbox.window.SultaroI18n,
   catalogs = sandbox.window.SULTARO_LOCALES,
@@ -67,16 +71,50 @@ for (const language of I.languages) {
   I.setLocale(language.code);
   assert.ok(I.t("Farm 123").includes("123"));
   assert.ok(I.error("operator_managed"));
+  assert.ok(I.t("3 farms selected").includes("3"));
+  assert.ok(I.t("Choices saved for 2 farms.").includes("2"));
 }
 I.setLocale("ar");
 assert.equal(I.t("Activities"), "الأنشطة");
 assert.equal(I.t("Farm 123"), "المزرعة 123");
 assert.equal(I.t("Lord level"), "مستوى السلطان");
 assert.equal(I.t("March 2"), "المسيرة 2");
-assert.equal(I.t("Falcon"), "الصقر");
+assert.equal(I.gameName("pets", 1263), "الصقر");
 assert.equal(I.t("Resource gathering"), "جمع الموارد");
 I.setLocale("invalid");
 assert.equal(I.locale(), "en");
+assert.equal(U.petNames, undefined);
+assert.equal(U.choiceLabels.gathering[1003], "Wood");
+assert.equal(U.choiceLabels.fountain[1023], "Safe wood");
+assert.equal(U.choiceLabels.research.resource, "Resources");
+const official = sandbox.window.SULTARO_GAME_NAMES;
+assert.equal(Object.keys(official.heroes).length, 82);
+assert.equal(Object.keys(official.pets).length, 15);
+for (const language of I.languages) {
+  I.setLocale(language.code);
+  for (const kind of ["heroes", "pets"]) {
+    for (const [id, names] of Object.entries(official[kind])) {
+      assert.ok(names[language.code], kind + " " + id + " " + language.code);
+      assert.equal(I.gameName(kind, id), names[language.code]);
+      if (language.code !== "ar") assert.ok(!/[\u0600-\u06ff]/.test(I.gameName(kind, id)));
+    }
+    assert.ok(I.gameName(kind, 99999999).includes("99999999"));
+    if (language.code !== "ar") assert.ok(!/[\u0600-\u06ff]/.test(I.gameName(kind, 99999999)));
+  }
+}
+I.setLocale("en");
+assert.equal(I.gameName("pets", 1263), "Eagle");
+assert.equal(I.gameName("pets", 1267), "Ironclad Elephant");
+assert.equal(I.gameName("pets", 1272), "Sandstorm Griffin");
+official.heroes[99999990] = { en: "English fallback", ar: "اسم عربي" };
+I.setLocale("de");
+assert.equal(I.gameName("heroes", 99999990), "English fallback");
+official.heroes[99999990] = { ar: "اسم عربي" };
+assert.equal(I.gameName("heroes", 99999990), "Held 99999990");
+delete official.heroes[99999990];
+I.setLocale("ar");
+assert.equal(I.gameName("heroes", 99999990), "البطل 99999990");
+I.setLocale("en");
 assert.ok(
   !keys.some((key) =>
     /\b(functions?|sessions?|passwords?|emails?|workers?|cycles?|headless|SQL)\b/i.test(key),

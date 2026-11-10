@@ -27,22 +27,18 @@
     ["pet_care", "Pet care", "heroes"],
     ["alliance_help", "Alliance member help", "alliance"],
   ].map(([id, name, group]) => ({ id, name, group }));
-  const petNames = {
-    1261: "Deer",
-    1262: "Lion",
-    1263: "Falcon",
-    1264: "Wolf",
-    1265: "Leopard",
-    1266: "War bear",
-    1267: "Giant elephant",
-    1268: "Wild bull",
-    1269: "Kangal dog",
-    1270: "Saber-toothed tiger",
-    1271: "Rhinoceros",
-    1272: "Sandstorm phoenix",
-    1273: "Rebel tiger",
-    1274: "Death lizard",
-    1275: "Hydra",
+  // Stable game identifiers keep these choices independent of API display language.
+  const choiceLabels = {
+    gathering: { 0: "Disabled", 1002: "Wheat", 1003: "Wood", 1004: "Iron", 1005: "Mithril" },
+    fountain: {
+      0: "Disabled", 1022: "Safe food", 1023: "Safe wood",
+      1024: "Safe iron", 1006: "Steel", 1025: "Safe mithril",
+    },
+    research: {
+      "": "Disabled", military: "Military", anchor: "Castle defense",
+      cityDevelop: "Castle development", resource: "Resources", hero: "Heroes",
+      advancedMilitary: "Advanced military", special: "Special",
+    },
   };
   const groups = [
     { id: "castle", name: "Castle & buildings", icon: "castle" },
@@ -77,6 +73,11 @@
             ? false
             : row.enabled,
     }));
+  }
+  function sameActivityChoices(left, right) {
+    const selected = new Map(right.map(row => [row.id, row.enabled === true]));
+    return left.length === right.length && left.every(row =>
+      selected.has(row.id) && selected.get(row.id) === (row.enabled === true));
   }
   function apiUrl(base, path, hostname) {
     if (!base || typeof base !== "string")
@@ -116,9 +117,10 @@
   return {
     activities,
     groups,
-    petNames,
+    choiceLabels,
     normalizeActivities,
     toggle,
+    sameActivityChoices,
     apiUrl,
     botUrl,
     count,

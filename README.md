@@ -8,7 +8,9 @@ See the castles assigned to you, their levels, kingdoms, player IDs and availabl
 
 ## Activities
 
-Choose from 21 activities, grouped by castles, resources, army, heroes, alliance and events. Save your choices when you are finished. Castle upgrades and resource building upgrades are separate choices: selecting one turns the other off.
+Choose a farm from the list to see its saved activities. Pick from 21 activities, grouped by castles, resources, army, heroes, alliance and events. Check the farms that should receive those choices, then select **Save choices**. Only the checked farms change. The displayed farm is selected by default; you can select other farms or apply the same choices to several farms together.
+
+Castle upgrades and resource building upgrades are separate choices: selecting one turns the other off. If you switch to another farm with unsaved changes, you can keep editing or discard those changes first.
 
 ## Farm settings
 
