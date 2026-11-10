@@ -1,4 +1,4 @@
 window.SULTARO_CONFIG = {
-  "apiBaseUrl": "https://trucks-leisure-keyboards-kirk.trycloudflare.com",
+  "apiBaseUrl": "https://imposed-saint-function-tall.trycloudflare.com",
   "botUsername": "SULTARO_BOT"
 };
