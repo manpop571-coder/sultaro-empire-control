@@ -840,11 +840,27 @@
       );
       const slots = el("div", "slot-grid"),
         inputs = [];
+      const limits = state.catalog.gathering_limits || { min_level: 1, max_level: 8 };
+      draft.level_ranges = U.gatheringRanges(draft.level_ranges, limits);
+      const levels = Array.from({ length: limits.max_level - limits.min_level + 1 },
+        (_, index) => ({ id: limits.min_level + index, name: String(limits.min_level + index) }));
       for (let index = 0; index < 6; index++) {
         const choice = locked(select(catalogChoices("gathering"), draft.slots[index] || 0));
         choice.setAttribute("aria-label", "March " + (index + 1) + " resource");
         choice.addEventListener("change", () => (draft.slots[index] = Number(choice.value)));
-        inputs.push(choice);
+        const minimum = locked(select(levels, draft.level_ranges[index][0]));
+        const maximum = locked(select(levels, draft.level_ranges[index][1]));
+        minimum.setAttribute("aria-label", "March " + (index + 1) + " minimum level");
+        maximum.setAttribute("aria-label", "March " + (index + 1) + " maximum level");
+        minimum.addEventListener("change", () => {
+          maximum.value = String(Math.max(Number(minimum.value), Number(maximum.value)));
+          draft.level_ranges[index] = [Number(minimum.value), Number(maximum.value)];
+        });
+        maximum.addEventListener("change", () => {
+          minimum.value = String(Math.min(Number(minimum.value), Number(maximum.value)));
+          draft.level_ranges[index] = [Number(minimum.value), Number(maximum.value)];
+        });
+        inputs.push({ choice, minimum, maximum });
         slots.append(
           add(
             el("div", "slot-card"),
@@ -854,6 +870,7 @@
               el("span", "", "March " + (index + 1)),
             ),
             choice,
+            add(el("div", "slot-levels"), field("Minimum level", minimum), field("Maximum level", maximum)),
           ),
         );
       }
@@ -861,7 +878,8 @@
         slots,
         el("p", "card-help", "Busy marches and marches not yet unlocked are skipped."),
       );
-      read = () => ({ slots: inputs.map((input) => Number(input.value)) });
+      read = () => ({ slots: inputs.map((input) => Number(input.choice.value)),
+        level_ranges: inputs.map(input => [Number(input.minimum.value), Number(input.maximum.value)]) });
     } else if (section === "heroes") {
       box.append(
         panelTitle(
@@ -1068,7 +1086,7 @@
     "demo-3": U.activities.map(row => ({ ...row, enabled: ["hero_hall", "hero_upgrade", "pet_care", "alliance_help"].includes(row.id) })),
   };
   const previewPrefs = {
-    gathering: { slots: [1, 1, 1, 1, 1, 1], version: 1 },
+    gathering: { slots: [1, 1, 1, 1, 1, 1], level_ranges: Array.from({ length: 6 }, () => [1, 8]), version: 1 },
     research: { value: "resource", version: 1 },
     fountain: { value: 1023, version: 1 },
     heroes: { hero_ids: [5503027, 5501042], version: 1 },
@@ -1149,7 +1167,9 @@
         { id: 1002, name: "Wheat" },
         { id: 1004, name: "Iron" },
         { id: 1005, name: "Mithril" },
+        { id: 1001, name: "Gold" },
       ],
+      gathering_limits: { min_level: 1, max_level: 8 },
       fountain: [
         { id: 0, name: "Disabled" },
         { id: 1023, name: "Safe wood" },

@@ -29,7 +29,7 @@
   ].map(([id, name, group]) => ({ id, name, group }));
   // Stable game identifiers keep these choices independent of API display language.
   const choiceLabels = {
-    gathering: { 0: "Disabled", 1: "Random", 1002: "Wheat", 1003: "Wood", 1004: "Iron", 1005: "Mithril" },
+    gathering: { 0: "Disabled", 1: "Random", 1001: "Gold", 1002: "Wheat", 1003: "Wood", 1004: "Iron", 1005: "Mithril" },
     fountain: {
       0: "Disabled", 1022: "Safe food", 1023: "Safe wood",
       1024: "Safe iron", 1006: "Steel", 1025: "Safe mithril",
@@ -114,6 +114,15 @@
     return /^#[0-9a-f]{6}$/i.test(String(value)) ? value : "#c7c2ad";
   }
   const copy = (value) => JSON.parse(JSON.stringify(value));
+  function gatheringRanges(value, limits = { min_level: 1, max_level: 8 }) {
+    if (value === undefined || value === null)
+      return Array.from({ length: 6 }, () => [limits.min_level, limits.max_level]);
+    if (!Array.isArray(value) || value.length !== 6 || value.some(pair =>
+      !Array.isArray(pair) || pair.length !== 2 || !pair.every(Number.isInteger) ||
+      pair[0] < limits.min_level || pair[0] > pair[1] || pair[1] > limits.max_level))
+      throw new Error("Please check your choices and try again.");
+    return value.map(pair => pair.slice());
+  }
   return {
     activities,
     groups,
@@ -125,6 +134,7 @@
     botUrl,
     count,
     safeColor,
+    gatheringRanges,
     copy,
   };
 });

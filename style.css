@@ -751,6 +751,14 @@ input[type="checkbox"] {
   gap: 15px;
   margin-top: 25px;
 }
+.slot-levels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.slot-levels .field { min-width: 0; }
+.slot-levels .field > span { font-size: 11px; }
 .slot-card {
   padding: 17px;
   background: #240f09;

@@ -54,6 +54,8 @@
     [/^Level (.+)$/, "Level {0}"],
     [/^March (\d+)$/, "March {0}"],
     [/^March (\d+) resource$/, "March {0} resource"],
+    [/^March (\d+) minimum level$/, "March {0} minimum level"],
+    [/^March (\d+) maximum level$/, "March {0} maximum level"],
     [/^(\d+) farms$/, "{0} farms"],
     [/^(\d+) selected$/, "{0} selected"],
     [/^(\d+) farms selected$/, "{0} farms selected"],
