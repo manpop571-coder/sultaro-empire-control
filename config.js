@@ -1,4 +1,4 @@
 window.SULTARO_CONFIG = {
-  "apiBaseUrl": "https://gonna-cathedral-pacific-lawrence.trycloudflare.com",
+  "apiBaseUrl": "https://bicycle-inf-chevy-ancient.trycloudflare.com",
   "botUsername": "SULTARO_BOT"
 };
