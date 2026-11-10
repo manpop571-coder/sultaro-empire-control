@@ -1,4 +1,4 @@
 window.SULTARO_CONFIG = {
-  "apiBaseUrl": "https://trailer-colorado-diff-characteristic.trycloudflare.com",
+  "apiBaseUrl": "https://extensions-growing-walnut-dates.trycloudflare.com",
   "botUsername": "SULTARO_BOT"
 };
