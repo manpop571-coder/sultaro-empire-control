@@ -1,4 +1,4 @@
 window.SULTARO_CONFIG = {
-  "apiBaseUrl": "https://vegetable-prerequisite-witch-streets.trycloudflare.com",
+  "apiBaseUrl": "https://rice-goals-vocal-decade.trycloudflare.com",
   "botUsername": "SULTARO_BOT"
 };
