@@ -1,4 +1,4 @@
 window.SULTARO_CONFIG = {
-  "apiBaseUrl": "https://rice-goals-vocal-decade.trycloudflare.com",
+  "apiBaseUrl": "https://screenshot-cell-blond-pdf.trycloudflare.com",
   "botUsername": "SULTARO_BOT"
 };
