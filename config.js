@@ -1,4 +1,4 @@
 window.SULTARO_CONFIG = {
-  "apiBaseUrl": "https://markers-insertion-album-wellington.trycloudflare.com",
+  "apiBaseUrl": "https://emerging-lots-extremely-promoted.trycloudflare.com",
   "botUsername": "SULTARO_BOT"
 };
