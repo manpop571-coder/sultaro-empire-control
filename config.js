@@ -1,4 +1,4 @@
 window.SULTARO_CONFIG = {
-  "apiBaseUrl": "https://choice-northwest-reggae-suitable.trycloudflare.com",
+  "apiBaseUrl": "https://feeds-cartoons-seeker-paying.trycloudflare.com",
   "botUsername": "SULTARO_BOT"
 };
