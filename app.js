@@ -246,7 +246,7 @@
   }
   function brand() {
     const image = el("img");
-    image.src = "./mark.svg";
+    image.src = "./mark.svg?v=20261110-forge";
     image.alt = "";
     image.width = 43;
     image.height = 43;
@@ -1006,8 +1006,8 @@
     if (tg) {
       tg.ready();
       tg.expand();
-      if (tg.setHeaderColor) tg.setHeaderColor("#0c1514");
-      if (tg.setBackgroundColor) tg.setBackgroundColor("#0c1514");
+      if (tg.setHeaderColor) tg.setHeaderColor("#100806");
+      if (tg.setBackgroundColor) tg.setBackgroundColor("#100806");
     }
     try {
       const [me, catalog, activities, settings, farms] = await Promise.all([

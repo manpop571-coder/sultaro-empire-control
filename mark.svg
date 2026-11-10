@@ -1,1 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 68"><path d="M6 18 32 2l26 16v29L32 65 6 47Z" fill="#15251a" stroke="#b69b60" stroke-width="1.4"/><path d="M13 22 32 10l19 12v21L32 56 13 43Z" fill="none" stroke="#506044" stroke-width=".8"/><path d="M20 45V28h7v-8h10v8h7v17M18 45h28M29 45V34h6v11" stroke="#d7bc7d" stroke-width="2" fill="none"/><path d="M35 13a5 5 0 0 1-7 5 5 5 0 0 0 7-5Z" fill="#d7bc7d"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 68">
+  <defs>
+    <linearGradient id="rim" x1="0" y1="0" x2=".7" y2="1">
+      <stop stop-color="#fff1bd"/><stop offset=".27" stop-color="#ffc85e"/>
+      <stop offset=".58" stop-color="#a74620"/><stop offset=".8" stop-color="#ed9d43"/>
+      <stop offset="1" stop-color="#ffdd8b"/>
+    </linearGradient>
+    <linearGradient id="metal" x2=".8" y2="1">
+      <stop stop-color="#733213"/><stop offset=".42" stop-color="#2e120b"/>
+      <stop offset="1" stop-color="#170907"/>
+    </linearGradient>
+    <linearGradient id="fire" x2="0" y2="1">
+      <stop stop-color="#ffe9a2"/><stop offset=".42" stop-color="#ffaf3c"/>
+      <stop offset="1" stop-color="#e95b1c" stop-opacity=".12"/>
+    </linearGradient>
+  </defs>
+  <path d="M6 18 32 2l26 16v29L32 65 6 47Z" fill="url(#metal)" stroke="url(#rim)" stroke-width="2"/>
+  <path d="M12 22 32 9l20 13v22L32 58 12 44Z" fill="none" stroke="#e6a554" stroke-opacity=".5" stroke-width=".8"/>
+  <path d="M32 11c4 8-3 10 2 16 1-5 5-6 6-10 7 9 8 15 2 22H24c-6-7-1-14 3-18-1 6 1 7 2 8-2-8 4-11 3-18Z" fill="url(#fire)" opacity=".8"/>
+  <path d="M20 46V29h7v-8h10v8h7v17M18 46h28M29 46V35h6v11" stroke="#fff0b8" stroke-width="2.1" fill="#34130c"/>
+  <path d="m25 52 7 5 7-5" stroke="#d48b41" stroke-width="1.1" fill="none"/>
+</svg>
