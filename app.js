@@ -5,961 +5,843 @@
     tg = window.Telegram && window.Telegram.WebApp;
   let config = window.SULTARO_CONFIG || {};
   const preview = new URLSearchParams(location.search).get("preview") === "1",
-    auth = preview ? "" : (tg && tg.initData) || "";
-  const app = document.getElementById("app"),
-    modalRoot = document.getElementById("modal-root");
-  const nav = [
-    ["overview", "Overview", "grid"],
+    auth = preview ? "" : (tg && tg.initData) || "",
+    app = document.getElementById("app");
+  const navigation = [
     ["farms", "My farms", "castle"],
-    ["functions", "Functions", "layers"],
+    ["activities", "Activities", "spark"],
     ["settings", "Farm settings", "sliders"],
-    ["run", "Run & logs", "play"],
   ];
   const state = {
-    page: "overview",
+    page: "farms",
     user: {},
     catalog: {},
     farms: [],
     total: 0,
-    farmPage: 0,
+    pageNumber: 0,
     selectedFarmId: null,
-    functions: U.ordered([]),
+    activities: U.normalizeActivities([]),
     settings: {},
-    status: {},
-    logs: [],
+    settingsDraft: {},
     prefs: null,
-    prefTab: "gathering",
-    prefLoading: false,
-    functionGroup: "all",
+    drafts: {},
+    tab: "gathering",
     dirty: false,
     mutations: 0,
+    loadingPrefs: false,
   };
-  let pageNode,
-    polling = false,
+  let main,
     toastTimer,
-    prefGeneration = 0,
     farmGeneration = 0,
-    logGeneration = 0,
-    mutationSerial = 0,
-    modalCleanup = null,
-    connectionFailed = false;
+    prefGeneration = 0,
+    fieldNumber = 0;
   const shapes = {
-    grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
     castle: '<path d="M3 21V8h4V4h3v4h4V4h3v4h4v13M2 21h20M10 21v-6h4v6M7 12h1m8 0h1"/>',
-    layers: '<path d="m12 3 10 5-10 5L2 8l10-5Zm-9 9 9 5 9-5M3 17l9 5 9-5"/>',
     sliders:
       '<path d="M4 5h16M4 12h16M4 19h16"/><circle cx="8" cy="5" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="10" cy="19" r="2"/>',
-    play: '<path d="m8 4 12 8-12 8V4Z"/>',
-    stop: '<rect x="5" y="5" width="14" height="14" rx="2"/>',
-    plus: '<path d="M12 5v14M5 12h14"/>',
-    arrow: '<path d="M5 12h14m-5-5 5 5-5 5"/>',
-    up: '<path d="m6 14 6-6 6 6"/>',
-    down: '<path d="m6 10 6 6 6-6"/>',
-    refresh: '<path d="M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 13 3M5 15a8 8 0 0 0 13 3"/>',
-    check: '<path d="m5 12 4 4L19 6"/>',
-    close: '<path d="m6 6 12 12M18 6 6 18"/>',
-    edit: '<path d="m15 4 5 5-11 11H4v-5L15 4Zm-2 2 5 5"/>',
-    eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
-    star: '<path d="m12 3 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1 3-6Z"/>',
-    shield: '<path d="M12 3 21 7v6c0 4-5 7-9 9-4-2-9-5-9-9V7l9-4Z"/>',
     leaf: '<path d="M20 3C9 2 2 8 4 16c3 7 14 5 16-13ZM4 21 15 10"/>',
+    shield: '<path d="m12 3 9 4v6c0 4-5 7-9 9-4-2-9-5-9-9V7l9-4Z"/>',
+    star: '<path d="m12 3 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1 3-6Z"/>',
     users:
       '<circle cx="9" cy="8" r="3"/><path d="M3 21v-4a6 6 0 0 1 12 0v4m1-16a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 5v2"/>',
     spark: '<path d="m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3 3-7Z"/>',
-    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/>',
-    info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/>',
+    arrow: '<path d="M5 12h14m-5-5 5 5-5 5"/>',
+    check: '<path d="m5 12 4 4L19 6"/>',
+    refresh: '<path d="M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 13 3M5 15a8 8 0 0 0 13 3"/>',
     copy: '<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V3H3v13h5"/>',
-    telegram: '<path d="m3 10 18-7-4 18-6-6-4 3 1-6 9-6-10 6-4-2Z"/>',
+    moon: '<path d="M20 14a9 9 0 0 1-10-12A9 9 0 1 0 20 14Z"/>',
+    gem: '<path d="m7 3-5 7 10 12 10-12-5-7H7Zm-5 7h20M7 3l5 19 5-19"/>',
+    wheat:
+      '<path d="M12 22V4m0 13c-5 0-7-3-7-6 4 0 7 2 7 6Zm0-6c5 0 7-3 7-6-4 0-7 2-7 6Zm0-7L10 1"/>',
+    wood: '<path d="m12 2-7 9h4l-6 7h7v4h4v-4h7l-6-7h4l-7-9Z"/>',
+    iron: '<path d="m6 5 10-2 6 11-9 8L2 15 6 5Zm0 0 7 7 9 2m-9-2v10L2 15"/>',
+    coin: '<circle cx="12" cy="12" r="9"/><path d="M15 8h-4a2 2 0 0 0 0 4h2a2 2 0 0 1 0 4H9m3-10v12"/>',
   };
   function el(tag, cls, text) {
-    const n = document.createElement(tag);
-    if (cls) n.className = cls;
-    if (text !== undefined) n.textContent = String(text);
-    if (cls && (/farm-email|^avatar$/.test(cls) || cls === "truncate")) n.dataset.i18nSkip = "true";
-    return n;
+    const node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text !== undefined) node.textContent = String(text);
+    return node;
+  }
+  function raw(tag, cls, text) {
+    const node = el(tag, cls, text);
+    node.dataset.i18nSkip = "true";
+    return node;
+  }
+  function add(node, ...children) {
+    for (const child of children.flat())
+      if (child !== null && child !== undefined) node.append(child);
+    return node;
   }
   function icon(name) {
-    const n = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    n.setAttribute("viewBox", "0 0 24 24");
-    n.setAttribute("class", "icon");
-    n.setAttribute("aria-hidden", "true");
-    n.innerHTML = shapes[name] || shapes.info;
-    return n;
+    const node = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    node.setAttribute("class", "icon");
+    node.setAttribute("viewBox", "0 0 24 24");
+    node.setAttribute("aria-hidden", "true");
+    node.innerHTML = shapes[name] || shapes.spark;
+    return node;
   }
-  function append(n, ...children) {
-    for (const c of children.flat()) if (c !== null && c !== undefined) n.append(c);
-    return n;
+  function button(label, handler, cls = "", symbol) {
+    const node = el("button", cls);
+    node.type = "button";
+    if (symbol) node.append(icon(symbol));
+    node.append(document.createTextNode(label));
+    if (handler) node.addEventListener("click", handler);
+    return node;
   }
-  function btn(text, fn, cls = "", name) {
-    const n = el("button", cls);
-    n.type = "button";
-    if (name) n.append(icon(name));
-    n.append(document.createTextNode(text));
-    if (fn) n.addEventListener("click", fn);
-    return n;
+  function locked(node) {
+    node.dataset.mutation = "true";
+    node.disabled = preview || state.mutations > 0;
+    return node;
   }
-  function iconBtn(label, name, fn) {
-    const n = btn("", fn, "icon-button", name);
-    n.title = label;
-    n.setAttribute("aria-label", label);
-    return n;
-  }
-  function locked(n) {
-    n.dataset.mutation = "true";
-    n.disabled = preview || !!state.status.busy || state.mutations > 0;
-    return n;
-  }
-  function badge(text, cls = "") {
-    return el("span", "badge " + cls, text);
-  }
-  function panel(cls = "") {
-    return el("section", "panel panel-pad " + cls);
-  }
-  function panelHead(title, subtitle, action) {
-    return append(
-      el("div", "panel-head"),
-      append(el("div"), el("h2", "", title), subtitle ? el("p", "", subtitle) : null),
-      action,
-    );
-  }
-  function notice(text, error = false) {
-    return append(
-      el("div", "notice" + (error ? " error" : "")),
-      icon("info"),
-      el("span", "", text),
-    );
-  }
-  function empty(title, text, action) {
-    return append(
-      el("div", "empty"),
-      append(el("span", "empty-icon"), icon("castle")),
-      el("h3", "", title),
-      el("p", "", text),
-      action,
-    );
-  }
-  function input(type, value, attrs = {}) {
-    const n = el("input");
-    n.type = type;
-    n.value = value == null ? "" : value;
-    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, String(v));
-    return n;
-  }
-  function select(options, value) {
-    const n = el("select");
-    for (const o of options) {
-      const opt = el("option", "", o.name);
-      if (o.raw) opt.dataset.i18nSkip = "true";
-      opt.value = o.id;
-      n.append(opt);
+  function select(rows, value) {
+    const node = el("select");
+    for (const row of rows) {
+      const option = el("option", "", row.name);
+      option.value = row.id;
+      if (row.raw) option.dataset.i18nSkip = "true";
+      node.append(option);
     }
-    n.value = String(value == null ? "" : value);
-    return n;
+    node.value = String(value == null ? "" : value);
+    return node;
   }
-  let inputCounter = 0;
   function field(label, control, help) {
-    const n = el("div", "field"),
-      l = el("label", "", label);
-    if (!control.id) control.id = "field-" + ++inputCounter;
-    l.htmlFor = control.id;
-    return append(n, l, control, help ? el("small", "", help) : null);
+    if (!control.id) control.id = "choice-" + ++fieldNumber;
+    const title = el("label", "", label);
+    title.htmlFor = control.id;
+    return add(el("div", "field"), title, control, help ? el("small", "", help) : null);
   }
-  function checkField(label, control, help) {
-    const n = el("label", "check-field");
-    return append(
-      n,
-      control,
-      append(el("span"), document.createTextNode(label), help ? el("small", "", help) : null),
+  function checkbox(checked) {
+    const node = el("input");
+    node.type = "checkbox";
+    node.checked = checked;
+    return node;
+  }
+  function number(value, min, max) {
+    const node = el("input");
+    node.type = "number";
+    node.value = value;
+    node.min = min;
+    node.max = max;
+    node.step = 1;
+    node.required = true;
+    return node;
+  }
+  function switchLabel(text, control, help) {
+    return add(
+      el("label", "switch-label"),
+      add(el("span", "switch-copy"), el("span", "", text), help ? el("small", "", help) : null),
+      add(el("span", "switch"), control, el("span", "switch-track")),
     );
   }
-  function toast(message, error = false) {
-    const n = document.getElementById("toast");
+  function note(text) {
+    return add(el("div", "note"), icon("moon"), el("p", "", text));
+  }
+  function toast(text, error = false) {
     clearTimeout(toastTimer);
-    n.textContent = message;
-    n.className = "toast visible" + (error ? " error" : "");
-    toastTimer = setTimeout(() => n.classList.remove("visible"), 5000);
+    const node = document.getElementById("toast");
+    node.textContent = text;
+    node.className = "toast visible" + (error ? " error" : "");
+    toastTimer = setTimeout(() => node.classList.remove("visible"), 4500);
+  }
+  function syncLocks() {
+    for (const node of document.querySelectorAll("[data-mutation]"))
+      node.disabled = preview || state.mutations > 0;
   }
   async function api(path, method = "GET", body) {
-    if (preview) throw new Error("Preview is read only.");
-    const mutating = method !== "GET";
-    if (mutating) {
+    if (preview) throw new Error("This is a read-only preview.");
+    const changed = method !== "GET";
+    if (changed) {
       state.mutations++;
-      mutationSerial++;
-      syncStatus();
+      syncLocks();
     }
-    const controller = new AbortController(),
-      timer = setTimeout(() => controller.abort(), 20000);
+    const cancel = new AbortController(),
+      timer = setTimeout(() => cancel.abort(), 20000);
     try {
       const response = await fetch(U.apiUrl(config.apiBaseUrl, path, location.hostname), {
         method,
         headers: { Authorization: "tma " + auth, "Content-Type": "application/json" },
         body: body === undefined ? undefined : JSON.stringify(body),
-        signal: controller.signal,
-        credentials: "omit",
+        signal: cancel.signal,
         cache: "no-store",
+        credentials: "omit",
       });
       let result;
       try {
         result = await response.json();
       } catch (_) {
-        throw new Error("The dashboard server did not return a valid response.");
+        throw new Error("Please try again later.");
       }
-      if (!response.ok || !result.ok) {
-        if (response.status === 401)
-          throw new Error(
-            "Your Telegram connection expired. Close this page and open it again from the bot.",
-          );
-        const error = new Error(
-          I.error(result.error && result.error.code, result.error && result.error.message),
-        );
-        error.code = result.error && result.error.code;
-        throw error;
-      }
+      if (!response.ok || !result.ok) throw new Error(I.error(result.error && result.error.code));
       return result.data;
     } catch (error) {
       if (error.name === "AbortError")
-        throw new Error("The request timed out. Check the latest status before trying again.");
+        throw new Error("Please refresh the page before trying again.");
       throw error;
     } finally {
       clearTimeout(timer);
-      if (mutating) {
+      if (changed) {
         state.mutations--;
-        syncStatus();
+        syncLocks();
       }
     }
   }
-  function action(fn) {
+  function action(handler) {
     return async () => {
       try {
-        await fn();
-      } catch (e) {
-        toast(e.message, true);
+        await handler();
+      } catch (error) {
+        toast(error.message, true);
       }
     };
   }
-  function farmName(f) {
-    return f ? "Farm " + f.farm_number : "Farm";
-  }
-  function farmStatus(f) {
-    return f.has_session ? "Connected" : "Not connected";
+  function farmName(farm) {
+    return "Farm " + farm.farm_number;
   }
   function selectedFarm() {
     return state.farms.find((f) => String(f.id) === String(state.selectedFarmId));
   }
-  function timeText(value) {
-    const d = typeof value === "number" ? new Date(value * 1000) : new Date(value);
-    return Number.isNaN(d.getTime())
-      ? ""
-      : d.toLocaleTimeString("en", {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-          hour12: false,
-        });
+  function navigate(page) {
+    if (!navigation.some((row) => row[0] === page)) return;
+    state.page = page;
+    render();
+    window.scrollTo({ top: 0, behavior: "instant" });
+    if (
+      page === "settings" &&
+      state.tab !== "shared" &&
+      state.selectedFarmId &&
+      !state.prefs &&
+      !state.loadingPrefs
+    )
+      loadPreferences(state.selectedFarmId);
   }
-  function statusLabel() {
-    if (connectionFailed) return "Connection interrupted";
-    return (
-      {
-        idle: "Ready",
-        queued: "Queued",
-        running: "Running",
-        stopping: "Stopping",
-        completed: "Completed",
-        failed: "Needs attention",
-        cancelled: "Stopped",
-      }[state.status.state] || "Ready"
+  function languageControl() {
+    const control = select(
+      I.languages.map((row) => ({ id: row.code, name: row.name })),
+      I.locale(),
+    );
+    control.dataset.languageSelect = "true";
+    control.className = "language-select";
+    control.setAttribute("aria-label", "Language");
+    control.addEventListener("change", async () => {
+      const previous = I.locale();
+      control.disabled = true;
+      try {
+        if (auth && !preview) {
+          const result = await api("/api/me", "PATCH", { locale: control.value });
+          state.user = result.user;
+        }
+        I.setLocale(control.value);
+        if (main) layout();
+        else gate();
+        toast("Language saved.");
+      } catch (error) {
+        control.value = previous;
+        toast(error.message, true);
+      } finally {
+        control.disabled = false;
+      }
+    });
+    return control;
+  }
+  function brand() {
+    const image = el("img");
+    image.src = "./mark.svg";
+    image.alt = "";
+    image.width = 43;
+    image.height = 43;
+    return add(
+      el("div", "brand"),
+      image,
+      add(el("div"), el("strong", "", "SULTARO"), el("span", "", "DAYS OF EMPIRE")),
     );
   }
-  function navigate(page) {
-    if (!nav.some((n) => n[0] === page)) return;
-    state.page = page;
-    renderPage();
-    window.scrollTo({ top: 0, behavior: "instant" });
-    if (page === "settings" && state.selectedFarmId && !state.prefs)
-      loadPreferences(state.selectedFarmId);
+  function navigationBar(cls) {
+    const node = el("nav", cls);
+    node.setAttribute("aria-label", "Navigation");
+    for (const [id, title, symbol] of navigation) {
+      const item = button(title, () => navigate(id), "nav-item", symbol);
+      item.dataset.page = id;
+      node.append(item);
+    }
+    return node;
   }
   function layout() {
     app.replaceChildren();
     app.removeAttribute("aria-busy");
-    const shell = el("div", "layout"),
-      side = el("aside", "sidebar"),
-      brand = el("div", "brand"),
-      logo = el("img");
-    logo.src = "./mark.svg";
-    logo.alt = "";
-    brand.append(
-      logo,
-      append(el("div"), el("strong", "", "SULTARO"), el("span", "", "DAYS OF EMPIRE")),
-    );
-    side.append(brand, el("div", "nav-label", "WORKSPACE"));
-    const navigation = el("nav", "nav");
-    navigation.setAttribute("aria-label", "Main navigation");
-    for (const [id, title, ic] of nav) {
-      const b = btn(title, () => navigate(id), "", ic);
-      b.dataset.page = id;
-      navigation.append(b);
-    }
-    side.append(navigation);
-    const support = el("a", "", "Community & support");
-    support.href = "https://t.me/sultaro";
-    support.target = "_blank";
-    support.rel = "noopener noreferrer";
-    support.prepend(icon("telegram"));
-    side.append(
-      append(
-        el("div", "sidebar-bottom"),
-        append(
-          el("div", "version-card"),
-          append(
-            el("div", "version-title"),
-            document.createTextNode("SULTARO V1"),
-            badge("TESTING"),
-          ),
-          el("p", "", "Built for your farms. Your feedback helps shape what comes next."),
-          support,
+    const shell = el("div", "shell"),
+      header = el("header", "header"),
+      identity = add(
+        el("div", "identity"),
+        raw("span", "identity-name", state.user.first_name || "SULTARO"),
+        add(
+          el("div", "identity-id"),
+          el("span", "", "Telegram ID"),
+          raw("b", "numeric", state.user.id),
         ),
-      ),
-    );
-    const workspace = el("div", "workspace"),
-      top = el("header", "topbar"),
-      mobile = el("div", "mobile-logo"),
-      ml = logo.cloneNode();
-    mobile.append(ml, el("strong", "", "SULTARO"));
-    const identity = el("div", "identity"),
-      name = state.user.first_name || "Farmer";
-    identity.append(
-      el("span", "avatar", name.slice(0, 2).toUpperCase()),
-      append(
-        el("div"),
-        el("strong", "", name),
-        el("div", "id-line", "Telegram ID: " + state.user.id),
-      ),
-    );
-    identity.querySelector("strong").dataset.i18nSkip = "true";
-    identity.querySelector(".avatar").dataset.i18nSkip = "true";
-    const copy = iconBtn(
-      "Copy Telegram ID",
-      "copy",
+      );
+    const copy = button(
+      "",
       action(async () => {
         await navigator.clipboard.writeText(String(state.user.id));
         toast("Telegram ID copied.");
       }),
+      "icon-button",
+      "copy",
     );
+    copy.setAttribute("aria-label", "Copy Telegram ID");
     identity.append(copy);
-    const pill = el("span", "live-pill");
-    pill.dataset.statusLabel = "";
-    top.append(
-      append(
-        el("div", "breadcrumb"),
-        document.createTextNode("Workspace"),
-        el("span", "", "/"),
-        el("strong", "breadcrumb-page", "Overview"),
+    header.append(
+      add(
+        el("div", "header-inner"),
+        brand(),
+        navigationBar("desktop-nav"),
+        add(el("div", "header-tools"), languageControl(), identity),
       ),
-      mobile,
-      append(el("div", "topbar-right"), languageControl(), pill, identity),
     );
-    pageNode = el("main", "main");
-    pageNode.id = "main";
-    workspace.append(top, pageNode);
-    const bottom = el("nav", "bottom-nav");
-    bottom.setAttribute("aria-label", "Mobile navigation");
-    for (const [id, title, ic] of nav) {
-      const b = btn(
-        id === "settings" ? "Settings" : id === "functions" ? "Functions" : title,
-        () => navigate(id),
-        "",
-        ic,
-      );
-      b.dataset.page = id;
-      bottom.append(b);
-    }
-    shell.append(side, workspace, bottom);
+    main = el("main", "main");
+    main.id = "main";
+    const footer = el("footer", "footer"),
+      support = el("a", "", "Community & support");
+    support.href = "https://t.me/sultaro";
+    support.target = "_blank";
+    support.rel = "noopener noreferrer";
+    footer.append(el("span", "", "SULTARO"), support);
+    shell.append(header, main, footer, navigationBar("bottom-nav"));
     app.append(shell);
-    renderPage();
+    render();
   }
-  function heading(title, subtitle, button) {
-    pageNode.append(
-      append(
+  function heading(title, copy, extra) {
+    main.append(
+      add(
         el("div", "page-heading"),
-        append(el("div"), el("h1", "", title), el("p", "", subtitle)),
-        button,
+        add(
+          el("div"),
+          el("div", "eyebrow", "DAYS OF EMPIRE"),
+          el("h1", "", title),
+          el("p", "", copy),
+        ),
+        extra,
       ),
     );
   }
-  function renderPage() {
-    if (!pageNode) return;
-    pageNode.replaceChildren();
-    for (const n of document.querySelectorAll("[data-page]")) {
-      const active = n.dataset.page === state.page;
-      n.classList.toggle("active", active);
-      n.setAttribute("aria-current", active ? "page" : "false");
+  function panelTitle(title, copy, symbol) {
+    return add(
+      el("div", "panel-title"),
+      symbol ? add(el("span", "title-symbol"), icon(symbol)) : null,
+      add(el("div"), el("h2", "", title), copy ? el("p", "", copy) : null),
+    );
+  }
+  function empty() {
+    return add(
+      el("section", "empty panel"),
+      add(el("span", "empty-emblem"), icon("castle")),
+      el("h2", "", "No assigned farms"),
+      el("p", "", "Share your Telegram ID with support to assign your farms."),
+      add(
+        el("div", "empty-id"),
+        el("span", "", "Telegram ID"),
+        raw("strong", "numeric", state.user.id),
+      ),
+    );
+  }
+  function render() {
+    if (!main) return;
+    main.replaceChildren();
+    for (const node of document.querySelectorAll("[data-page]")) {
+      const active = node.dataset.page === state.page;
+      node.classList.toggle("active", active);
+      node.setAttribute("aria-current", active ? "page" : "false");
     }
-    const crumb = document.querySelector(".breadcrumb-page");
-    if (crumb) crumb.textContent = nav.find((n) => n[0] === state.page)[1];
     if (preview)
-      pageNode.append(
-        append(
-          el("div", "preview-banner"),
-          icon("info"),
-          el("span", "", "Preview · Example data only. Changes and game actions are disabled."),
-        ),
-      );
-    ({
-      overview: renderOverview,
-      farms: renderFarms,
-      functions: renderFunctions,
-      settings: renderPreferences,
-      run: renderRun,
-    })[state.page]();
-    syncStatus();
+      main.append(el("div", "preview-note", "Preview · Example farms. Changes are disabled."));
+    ({ farms: renderFarms, activities: renderActivities, settings: renderSettings })[state.page]();
+    syncLocks();
   }
-  function metrics() {
-    const grid = el("div", "metrics");
-    for (const [key, title, ic, color, help] of [
-      ["parallel", "Active farms", "layers", "blue", "Working at the same time"],
-      ["progress", "Cycle progress", "clock", "gold", "Farms processed this cycle"],
-      ["success", "Successful farms", "check", "green", "All selected functions completed"],
-      ["failed", "Failed functions", "info", "red", "Unavailable tasks are not failures"],
-    ]) {
-      const value = el("div", "metric-value");
-      value.dataset.metric = key;
-      grid.append(
-        append(
-          panel("metric " + color),
-          append(
-            el("div", "metric-top"),
-            el("span", "", title),
-            append(el("span", "metric-icon"), icon(ic)),
-          ),
-          value,
-          el("div", "metric-foot", help),
-        ),
-      );
-    }
-    return grid;
-  }
-  function renderOverview() {
-    heading(
-      "Your empire, at a glance",
-      "Manage your farms from one place.",
-      btn("Refresh", action(refresh), "", "refresh"),
-    );
-    const hero = panel("hero-panel"),
-      copy = el("div");
-    copy.append(
-      el("div", "eyebrow", "YOUR FARMS. YOUR STRATEGY."),
-      el("h2", "", "A little less routine.\nA lot more empire."),
-      el(
-        "p",
-        "",
-        "Choose the tasks. Set your priorities. Let SULTARO take care of the daily work.",
-      ),
-      append(
-        el("div", "hero-actions"),
-        btn("Manage my farms", () => navigate("farms"), "primary", "arrow"),
-        el("span", "hero-note", "21 functions · One simple workspace"),
-      ),
-    );
-    const art = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    art.setAttribute("viewBox", "0 0 180 150");
-    art.setAttribute("class", "hero-art");
-    art.setAttribute("aria-hidden", "true");
-    art.innerHTML =
-      '<path d="M13 138h154" stroke="#60bdae" stroke-width="2"/><path d="M30 137V74h30v63m60 0V74h30v63M60 137V51h60v86" fill="#1e4c51" stroke="#5ba89e" stroke-width="2"/><path d="M25 74V58h10v8h10v-8h10v8h10v8m50 0V58h10v8h10v-8h10v8h10v8M55 51V31h12v9h12v-9h22v9h12v-9h12v20" fill="#265f5b" stroke="#75ceba" stroke-width="2"/><path d="M80 137v-29a10 10 0 0 1 20 0v29" fill="#102b35" stroke="#75ceba" stroke-width="2"/><path d="M44 90v13m92-13v13M77 67v13m26-13v13M90 31V8l22 8-22 8" fill="none" stroke="#e9bc72" stroke-width="3"/><path d="m21 35 3-7 3 7 7 3-7 3-3 7-3-7-7-3 7-3Zm132-13 2-5 2 5 5 2-5 2-2 5-2-5-5-2 5-2Z" fill="#e9bc72"/>';
-    hero.append(copy, art);
-    pageNode.append(hero, metrics());
-    const grid = el("div", "overview-grid"),
-      farms = panel(),
-      groups = panel();
-    farms.append(
-      panelHead(
-        "Your farms",
-        U.count(state.total) + " farms in your workspace",
-        btn("View all", () => navigate("farms"), "panel-link", "arrow"),
-      ),
-    );
-    if (!state.farms.length)
-      farms.append(
-        empty(
-          "No assigned farms",
-          "Contact the operator and share your Telegram ID to assign your farms.",
-        ),
-      );
-    else
-      for (const f of state.farms.slice(0, 4)) {
-        farms.append(
-          append(
-            el("div", "farm-mini"),
-            append(el("span", "farm-tile"), icon("castle")),
-            append(el("div", "grow"), el("strong", "", farmName(f)), el("p", "truncate", f.email)),
-            append(
-              el("div"),
-              badge("Lv. " + (f.castle_level || "—"), "neutral"),
-              el("p", "small-text dim", "Kingdom " + (f.kingdom || "—")),
-            ),
-          ),
-        );
-      }
-    groups.append(
-      panelHead(
-        "Your automation",
-        "Every task has its place",
-        btn("Configure", () => navigate("functions"), "panel-link", "arrow"),
-      ),
-    );
-    const gg = el("div", "group-grid");
-    for (const g of U.groups) {
-      const rows = state.functions.filter((f) => f.group === g.id),
-        b = btn(
-          "",
-          () => {
-            state.functionGroup = g.id;
-            navigate("functions");
-          },
-          "group-card",
-        );
-      b.append(
-        icon(g.icon),
-        el("strong", "", g.name),
-        append(
-          el("div", "group-count"),
-          document.createTextNode(rows.length + " tasks"),
-          el("span", "", rows.filter((f) => f.enabled).length + " on"),
-        ),
-      );
-      gg.append(b);
-    }
-    groups.append(gg);
-    grid.append(farms, groups);
-    pageNode.append(grid);
-    const recent = panel("section-gap");
-    recent.append(
-      panelHead(
-        "Recent activity",
-        "Updates from your latest run",
-        btn("Open logs", () => navigate("run"), "panel-link", "arrow"),
-      ),
-      logsList(state.logs.slice(0, 3), true),
-    );
-    pageNode.append(recent);
-  }
-  async function loadFarms(page = state.farmPage) {
-    const generation = ++farmGeneration;
-    const result = await api("/api/farms?page=" + page + "&limit=8");
+  async function loadFarms(page = state.pageNumber) {
+    const generation = ++farmGeneration,
+      result = await api("/api/farms?page=" + page + "&limit=8");
     if (generation !== farmGeneration) return;
     state.farms = result.rows || [];
     state.total = result.total || 0;
-    state.farmPage = result.page || 0;
+    state.pageNumber = result.page || 0;
     if (!selectedFarm()) {
-      state.selectedFarmId = state.farms.length ? state.farms[0].id : null;
+      state.selectedFarmId = state.farms[0] ? state.farms[0].id : null;
       state.prefs = null;
+      state.drafts = {};
     }
   }
-  function renderFarms() {
-    heading("My farms", "Account details, saved sessions and castle progress.");
-    pageNode.append(
-      notice("Only your own farms appear here. Passwords are never shown after they are saved."),
-    );
-    const box = el("section", "panel");
-    if (!state.farms.length) {
-      box.append(
-        empty(
-          "No assigned farms",
-          "Contact the operator and share your Telegram ID to assign your farms.",
-        ),
-      );
-    } else {
-      const table = el("table", "farm-table"),
-        head = el("thead"),
-        hr = el("tr");
-      for (const title of ["On", "Farm / email", "Castle", "Kingdom", "Session", ""])
-        hr.append(el("th", "", title));
-      head.append(hr);
-      const body = el("tbody");
-      for (const f of state.farms) {
-        const row = el("tr"),
-          enabled = locked(input("checkbox", ""));
-        enabled.checked = !!f.enabled;
-        enabled.setAttribute("aria-label", "Enable " + farmName(f));
-        enabled.addEventListener(
-          "change",
-          action(async () => {
-            try {
-              await api("/api/farms/" + f.id, "PATCH", {
-                enabled: enabled.checked,
-                version: f.version,
-              });
-              await loadFarms();
-              renderPage();
-            } catch (e) {
-              enabled.checked = !enabled.checked;
-              throw e;
-            }
-          }),
-        );
-        const edit = iconBtn("Edit " + farmName(f), "edit", () => openFarmDialog(f));
-        row.append(
-          append(el("td"), enabled),
-          append(
-            el("td", "account-cell"),
-            el("span", "farm-no", farmName(f)),
-            el("span", "farm-email subtext", f.email),
-          ),
-          el("td", "level-cell", f.castle_level || "—"),
-          el("td", "kingdom-cell", f.kingdom || "—"),
-          append(el("td", "status-cell"), badge(farmStatus(f), f.has_session ? "" : "neutral")),
-          append(el("td", "actions-cell"), append(el("div", "table-actions"), edit)),
-        );
-        row.querySelector(".level-cell").dataset.label = I.t("Castle");
-        row.querySelector(".kingdom-cell").dataset.label = I.t("Kingdom");
-        body.append(row);
-      }
-      table.append(head, body);
-      box.append(append(el("div", "table-wrap"), table));
-    }
-    const prev = btn(
+  function pagination() {
+    const previous = button(
         "Previous",
         action(async () => {
-          await loadFarms(state.farmPage - 1);
-          renderPage();
+          await loadFarms(state.pageNumber - 1);
+          render();
+          if (state.page === "settings") loadPreferences(state.selectedFarmId);
         }),
-        "small",
+        "subtle",
       ),
-      next = btn(
+      next = button(
         "Next",
         action(async () => {
-          await loadFarms(state.farmPage + 1);
-          renderPage();
+          await loadFarms(state.pageNumber + 1);
+          render();
+          if (state.page === "settings") loadPreferences(state.selectedFarmId);
         }),
-        "small",
+        "subtle",
       );
-    prev.disabled = state.farmPage === 0 || preview;
-    next.disabled = (state.farmPage + 1) * 8 >= state.total || preview;
-    box.append(
-      append(
-        el("div", "pagination"),
-        el(
-          "span",
-          "",
-          state.total
-            ? state.farmPage * 8 +
-                1 +
-                "–" +
-                Math.min((state.farmPage + 1) * 8, state.total) +
-                " of " +
-                U.count(state.total) +
-                " farms"
-            : "0 farms",
-        ),
-        append(el("div", "row"), prev, next),
+    previous.disabled = preview || state.pageNumber === 0;
+    next.disabled = preview || (state.pageNumber + 1) * 8 >= state.total;
+    return add(
+      el("div", "pagination"),
+      el("span", "", state.total + " farms"),
+      add(el("div", "button-row"), previous, next),
+    );
+  }
+  function renderFarms() {
+    heading(
+      "My farms",
+      "Your castles and their resources.",
+      button(
+        "Refresh",
+        action(async () => {
+          if (preview) {
+            toast("This is a read-only preview.");
+            return;
+          }
+          await loadFarms();
+          render();
+        }),
+        "subtle",
+        "refresh",
       ),
     );
-    pageNode.append(box);
-  }
-  function closeModal() {
-    if (modalCleanup) modalCleanup();
-    modalCleanup = null;
-    for (const n of modalRoot.querySelectorAll("[data-sensitive]")) n.value = "";
-    modalRoot.replaceChildren();
-    document.body.style.overflow = "";
-  }
-  function showModal(title, subtitle, content) {
-    closeModal();
-    const previous = document.activeElement,
-      back = el("div", "modal-backdrop"),
-      dialog = el("section", "modal"),
-      h = el("h2", "", title);
-    h.id = "dialog-title";
-    dialog.setAttribute("role", "dialog");
-    dialog.setAttribute("aria-modal", "true");
-    dialog.setAttribute("aria-labelledby", "dialog-title");
-    dialog.append(
-      append(
-        el("div", "modal-header"),
-        append(el("div"), h, subtitle ? el("p", "", subtitle) : null),
-        iconBtn("Close dialog", "close", closeModal),
-      ),
-      content,
-    );
-    back.append(dialog);
-    back.addEventListener("click", (e) => {
-      if (e.target === back) closeModal();
-    });
-    modalRoot.append(back);
-    document.body.style.overflow = "hidden";
-    const onKey = (e) => {
-      if (e.key === "Escape") closeModal();
-      if (e.key === "Tab") {
-        const items = Array.from(
-          dialog.querySelectorAll(
-            "button:not(:disabled),input:not(:disabled),select:not(:disabled),a[href]",
+    if (!state.farms.length) {
+      main.append(empty());
+      return;
+    }
+    const grid = el("div", "farm-grid");
+    for (const farm of state.farms) {
+      const card = el("article", "farm-card panel"),
+        crest = add(el("span", "farm-crest"), icon("castle")),
+        title = add(
+          el("div", "farm-title"),
+          el("h2", "", farmName(farm)),
+          add(
+            el("div", "farm-number"),
+            el("span", "", "Player ID"),
+            raw("span", "numeric", farm.game_user_id || "—"),
           ),
         );
-        if (!items.length) return;
-        const first = items[0],
-          last = items[items.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    modalCleanup = () => {
-      document.removeEventListener("keydown", onKey);
-      if (previous && previous.isConnected) previous.focus();
-    };
-    setTimeout(() => {
-      const first = dialog.querySelector("input:not(:disabled),button");
-      if (first) first.focus();
-    }, 0);
-    return dialog;
-  }
-  function openFarmDialog(farm) {
-    if (!farm) return;
-    const form = el("form"),
-      email = locked(
-        input("email", farm.email, {
-          required: "",
-          autocomplete: "off",
-          maxlength: 254,
-          placeholder: "you@example.com",
-        }),
-      ),
-      password = locked(
-        input("password", "", {
-          autocomplete: "new-password",
-          maxlength: 1024,
-          placeholder: "Leave empty to keep password",
-        }),
+      card.append(
+        add(
+          el("div", "farm-card-top"),
+          crest,
+          title,
+          add(
+            el("div", "level-seal"),
+            el("small", "", "Castle"),
+            raw("strong", "numeric", farm.castle_level || "—"),
+          ),
+        ),
       );
-    password.dataset.sensitive = "true";
-    const wrap = el("div", "password-wrap"),
-      show = iconBtn("Show password", "eye", () => {
-        password.type = password.type === "password" ? "text" : "password";
-        show.setAttribute(
-          "aria-label",
-          password.type === "password" ? "Show password" : "Hide password",
+      const facts = el("div", "farm-facts");
+      for (const [label, value] of [
+        ["Kingdom", farm.kingdom],
+        ["Lord level", farm.lord_level],
+        ["VIP", farm.vip],
+      ])
+        facts.append(
+          add(
+            el("div"),
+            el("span", "", label),
+            raw("strong", "numeric", value == null ? "—" : value),
+          ),
         );
-      });
-    wrap.append(password, show);
-    const pwField = el("div", "field"),
-      pwLabel = el("label", "", "New password (optional)");
-    password.id = "account-password";
-    pwLabel.htmlFor = password.id;
-    pwField.append(pwLabel, wrap, el("small", "", "Changing credentials requires a new session."));
-    const detail = el("div", "modal-detail");
-    for (const [k, v] of [
-      ["Castle", farm.castle_level || "—"],
-      ["Kingdom", farm.kingdom || "—"],
-      ["Session", farmStatus(farm)],
-    ])
-      detail.append(append(el("div"), el("span", "", k), el("strong", "", v)));
-    form.append(detail, append(el("div", "form-grid"), field("Email address", email), pwField));
-    const error = el("p", "form-error");
-    error.setAttribute("role", "alert");
-    form.append(error);
-    const save = locked(btn("Save changes", null, "primary", "check"));
-    save.type = "submit";
-    form.append(
-      append(
-        el("div", "form-actions"),
-        el("span", "muted", "Saved securely on the server."),
-        btn("Cancel", closeModal),
+      card.append(facts);
+      const resources = el("div", "farm-resources");
+      for (const [key, label, symbol] of [
+        ["wheat", "Wheat", "wheat"],
+        ["wood", "Wood", "wood"],
+        ["iron", "Iron", "iron"],
+        ["gold_total", "Gold", "coin"],
+      ])
+        resources.append(
+          add(
+            el("div", "resource"),
+            icon(symbol),
+            el("span", "", label),
+            raw("strong", "numeric", U.count(farm[key])),
+          ),
+        );
+      card.append(
+        resources,
+        button(
+          "Farm settings",
+          () => {
+            state.selectedFarmId = farm.id;
+            state.prefs = null;
+            state.drafts = {};
+            navigate("settings");
+          },
+          "farm-link",
+          "arrow",
+        ),
+      );
+      grid.append(card);
+    }
+    main.append(grid, pagination());
+  }
+  function renderActivities() {
+    heading("Activities", "Choose what your farms should take care of.");
+    const grid = el("div", "activity-grid");
+    for (const group of U.groups) {
+      const rows = state.activities.filter((row) => row.group === group.id),
+        card = el("section", "activity-card panel");
+      card.append(panelTitle(group.name, null, group.icon));
+      for (const activity of rows) {
+        const check = locked(checkbox(activity.enabled));
+        check.id = "activity-" + activity.id;
+        check.addEventListener("change", () => {
+          state.activities = U.toggle(state.activities, activity.id, check.checked);
+          state.dirty = true;
+          render();
+        });
+        card.append(switchLabel(activity.name, check));
+      }
+      if (group.id === "castle")
+        card.append(
+          el(
+            "p",
+            "card-help",
+            "Castle upgrades and resource building upgrades are separate choices.",
+          ),
+        );
+      grid.append(card);
+    }
+    const save = locked(
+      button(
+        "Save choices",
+        action(async () => {
+          const result = await api("/api/activities", "PATCH", {
+            rows: state.activities.map((row) => ({ id: row.id, enabled: row.enabled })),
+          });
+          state.activities = U.normalizeActivities(result.rows);
+          state.dirty = false;
+          toast("Choices saved.");
+          render();
+        }),
+        "primary",
+        "check",
+      ),
+    );
+    main.append(
+      grid,
+      add(
+        el("div", "savebar"),
+        add(
+          el("div"),
+          el("strong", "", state.activities.filter((row) => row.enabled).length + " selected"),
+          el(
+            "span",
+            "",
+            state.dirty ? "Unsaved changes" : "These choices apply to all your farms.",
+          ),
+        ),
         save,
       ),
     );
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      if (preview || state.status.busy || state.mutations) return;
-      error.textContent = "";
-      const body = { email: email.value.trim(), version: farm.version };
-      if (password.value) body.password = password.value;
-      try {
-        await api("/api/farms/" + farm.id, "PATCH", body);
-        password.value = "";
-        delete body.password;
-        closeModal();
-        await loadFarms();
-        toast("Account details saved.");
-        navigate("farms");
-      } catch (err) {
-        delete body.password;
-        password.value = "";
-        error.textContent = err.message;
-      }
-    });
-    form.append(
-      append(
-        el("div", "danger-zone"),
-        locked(
-          btn(
-            "Capture session",
-            action(async () => {
-              state.status = await api("/api/farms/" + farm.id + "/capture", "POST", {});
-              closeModal();
-              navigate("run");
-            }),
-            "",
-            "refresh",
-          ),
-        ),
-      ),
-    );
-    showModal("Edit " + farmName(farm), "ONE MT account", form);
   }
-  function renderFunctions() {
-    heading("Functions", "Choose your tasks. They run in the order shown below.", null);
-    const chips = el("div", "chip-row");
-    for (const g of [{ id: "all", name: "All functions" }, ...U.groups])
-      chips.append(
-        btn(
-          g.name,
-          () => {
-            state.functionGroup = g.id;
-            renderPage();
-          },
-          "chip" + (state.functionGroup === g.id ? " active" : ""),
+  async function loadPreferences(id) {
+    if (!id) return;
+    const generation = ++prefGeneration;
+    state.loadingPrefs = true;
+    state.prefs = null;
+    if (state.page === "settings") render();
+    try {
+      const result = preview
+        ? U.copy(previewPrefs)
+        : await api("/api/farms/" + id + "/preferences");
+      if (generation !== prefGeneration || String(id) !== String(state.selectedFarmId)) return;
+      state.prefs = result;
+      state.drafts = U.copy(result);
+      state.loadingPrefs = false;
+      if (state.page === "settings") render();
+    } catch (error) {
+      if (generation !== prefGeneration) return;
+      state.loadingPrefs = false;
+      toast(error.message, true);
+      if (state.page === "settings") render();
+    }
+  }
+  function renderSettings() {
+    heading("Farm settings", "Give each farm its own priorities.");
+    if (!state.farms.length) {
+      main.append(empty());
+      return;
+    }
+    const tabs = el("div", "settings-tabs");
+    tabs.setAttribute("role", "tablist");
+    for (const [id, title, symbol] of [
+      ["gathering", "Gathering", "leaf"],
+      ["fountain", "Fountain", "gem"],
+      ["research", "Research", "star"],
+      ["heroes", "Heroes", "shield"],
+      ["shared", "Other choices", "sliders"],
+    ]) {
+      const item = button(
+        title,
+        () => {
+          state.tab = id;
+          render();
+          if (id !== "shared" && !state.prefs && !state.loadingPrefs)
+            loadPreferences(state.selectedFarmId);
+        },
+        state.tab === id ? "active" : "",
+        symbol,
+      );
+      item.setAttribute("role", "tab");
+      item.setAttribute("aria-selected", String(state.tab === id));
+      item.dataset.tab = id;
+      tabs.append(item);
+    }
+    main.append(tabs);
+    if (state.tab === "shared") {
+      renderShared();
+      return;
+    }
+    const chooser = select(
+      state.farms.map((farm) => ({ id: farm.id, name: farmName(farm) })),
+      state.selectedFarmId,
+    );
+    chooser.setAttribute("aria-label", "Selected farm");
+    chooser.addEventListener("change", () => {
+      state.selectedFarmId = chooser.value;
+      state.drafts = {};
+      loadPreferences(chooser.value);
+    });
+    const farm = selectedFarm(),
+      selector = add(
+        el("div", "farm-selector"),
+        field("Selected farm", chooser),
+        add(
+          el("div", "selection-detail"),
+          icon("castle"),
+          el("span", "", farm ? "Level " + (farm.castle_level || "—") : ""),
+          el("span", "separator", "·"),
+          el("span", "", farm ? "Kingdom " + (farm.kingdom || "—") : ""),
         ),
       );
-    pageNode.append(chips);
-    const layout = el("div", "function-layout"),
-      listPanel = el("section", "panel"),
-      list = el("div", "functions-list");
-    state.functions.forEach((f, index) => {
-      if (state.functionGroup !== "all" && f.group !== state.functionGroup) return;
-      const check = locked(input("checkbox", ""));
-      check.checked = f.enabled;
-      check.id = "function-" + f.id;
-      check.addEventListener("change", () => {
-        state.functions = U.toggle(state.functions, f.id, check.checked);
-        state.dirty = true;
-        renderPage();
-      });
-      const label = el("label", "function-name", f.name);
-      label.htmlFor = check.id;
-      const controls = el("div", "function-controls"),
-        up = locked(
-          iconBtn("Move " + f.name + " up", "up", () => {
-            state.functions = U.move(state.functions, index, -1);
-            state.dirty = true;
-            renderPage();
-          }),
-        ),
-        down = locked(
-          iconBtn("Move " + f.name + " down", "down", () => {
-            state.functions = U.move(state.functions, index, 1);
-            state.dirty = true;
-            renderPage();
-          }),
+    main.append(selector);
+    if (state.total > 8) main.append(pagination());
+    const box = el("section", "preference-panel panel");
+    if (state.loadingPrefs) {
+      box.append(el("div", "loading-copy", "Loading your choices…"));
+      main.append(box);
+      return;
+    }
+    if (!state.prefs) {
+      box.append(
+        note("Please refresh the page before trying again."),
+        button("Refresh", () => loadPreferences(state.selectedFarmId), "subtle", "refresh"),
+      );
+      main.append(box);
+      return;
+    }
+    const section = state.tab,
+      pref = state.prefs[section],
+      draft = state.drafts[section],
+      form = el("form");
+    let read;
+    if (section === "gathering") {
+      box.append(
+        panelTitle("Gathering marches", "Choose a resource for each available march.", "leaf"),
+      );
+      const slots = el("div", "slot-grid"),
+        inputs = [];
+      for (let index = 0; index < 6; index++) {
+        const choice = locked(select(state.catalog.gathering || [], draft.slots[index] || 0));
+        choice.setAttribute("aria-label", "March " + (index + 1) + " resource");
+        choice.addEventListener("change", () => (draft.slots[index] = Number(choice.value)));
+        inputs.push(choice);
+        slots.append(
+          add(
+            el("div", "slot-card"),
+            add(
+              el("div", "slot-heading"),
+              el("span", "slot-number", index + 1),
+              el("span", "", "March " + (index + 1)),
+            ),
+            choice,
+          ),
         );
-      if (index === 0) up.dataset.boundary = "true";
-      if (index === state.functions.length - 1) down.dataset.boundary = "true";
-      controls.append(up, down);
-      list.append(
-        append(
-          el("div", "function-row" + (f.enabled ? " selected" : "")),
-          el("span", "function-order", String(index + 1).padStart(2, "0")),
-          check,
-          label,
-          controls,
+      }
+      form.append(
+        slots,
+        el("p", "card-help", "Busy marches and marches not yet unlocked are skipped."),
+      );
+      read = () => ({ slots: inputs.map((input) => Number(input.value)) });
+    } else if (section === "heroes") {
+      box.append(
+        panelTitle(
+          "Hero experience",
+          "Use experience books only for the heroes you choose.",
+          "shield",
         ),
       );
-    });
-    listPanel.append(
-      list,
-      append(
-        el("div", "function-footer"),
-        el(
-          "span",
-          "muted small-text",
-          state.functions.filter((f) => f.enabled).length +
-            " selected" +
-            (state.dirty ? " · Unsaved changes" : ""),
+      const grid = el("div", "heroes-grid"),
+        inputs = [];
+      for (const hero of state.catalog.heroes || []) {
+        const check = locked(checkbox((draft.hero_ids || []).includes(hero.id)));
+        check.addEventListener(
+          "change",
+          () => (draft.hero_ids = inputs.filter((row) => row[1].checked).map((row) => row[0])),
+        );
+        inputs.push([hero.id, check]);
+        const mark = el("span", "hero-mark", "✦");
+        mark.style.color = U.safeColor(hero.color);
+        const name = raw("span", "hero-name", hero.name);
+        name.style.color = U.safeColor(hero.color);
+        grid.append(add(el("label", "hero-choice"), mark, name, check));
+      }
+      form.append(
+        grid,
+        el("p", "card-help", "Recruitment, stars and skills still apply to all available heroes."),
+      );
+      read = () => ({ hero_ids: inputs.filter((row) => row[1].checked).map((row) => row[0]) });
+    } else {
+      box.append(
+        panelTitle(
+          section === "research" ? "Research field" : "Treasure Fountain",
+          section === "research"
+            ? "Choose the field your farm should study."
+            : "Choose the resource your farm should receive.",
+          section === "research" ? "star" : "gem",
         ),
-        locked(
-          btn(
-            "Save functions",
-            action(async () => {
-              const result = await api("/api/functions", "PATCH", {
-                rows: state.functions.map((f) => ({ id: f.id, enabled: f.enabled })),
-              });
-              state.functions = U.ordered(result.rows);
-              state.dirty = false;
-              toast("Function order and selection saved.");
-              renderPage();
-            }),
-            "primary",
-            "check",
+      );
+      const grid = el("div", "choice-grid");
+      for (const choice of state.catalog[section] || []) {
+        const item = locked(
+          button(
+            choice.name,
+            () => {
+              draft.value = choice.id;
+              for (const item of grid.children) {
+                const active = item.dataset.choice === String(choice.id);
+                item.classList.toggle("active", active);
+                item.setAttribute("aria-pressed", String(active));
+              }
+            },
+            "choice-card" + (String(draft.value) === String(choice.id) ? " active" : ""),
+            section === "research" ? "star" : "leaf",
           ),
-        ),
-      ),
-    );
-    const options = panel("options-panel");
-    options.append(panelHead("Task options", "Applied to your farms"), taskOptionsForm());
-    layout.append(listPanel, options);
-    pageNode.append(layout);
-  }
-  function taskOptionsForm() {
-    const form = el("form"),
-      s = state.settings,
-      castle = locked(
-        select(
-          Array.from({ length: 30 }, (_, i) => ({ id: i + 1, name: "Level " + (i + 1) })),
-          s.castle_target_level || 30,
-        ),
-      ),
-      training = locked(input("checkbox", "")),
-      gold = locked(input("checkbox", "")),
-      refreshes = locked(
-        input("number", s.merchant_refreshes || 0, { min: 0, max: 1000, step: 1 }),
-      ),
-      pet = locked(
-        select(
-          [
-            { id: 0, name: "Best available" },
-            ...(state.catalog.pets || [])
-              .filter((p) => Number(p.id) !== 0)
-              .map((p) => ({ ...p, raw: true })),
-          ],
-          s.pet_preferred_id || 0,
-        ),
-      );
-    training.checked = !!s.training_use_speedups;
-    gold.checked = !!s.merchant_buy_gold;
-    form.append(
-      append(el("div", "options-title"), icon("castle"), document.createTextNode("Castle")),
-      field(
-        "Upgrade target",
-        castle,
-        "Castle and resource building upgrades cannot be enabled together.",
-      ),
-      append(el("div", "options-title"), icon("shield"), document.createTextNode("Troop training")),
-      checkField(
-        "Use speedups for grain carts",
-        training,
-        "Normal training continues when speedups run out.",
-      ),
-      append(
-        el("div", "options-title"),
-        icon("leaf"),
-        document.createTextNode("Mysterious Merchant"),
-      ),
-      checkField("Buy offers below 50 gold", gold),
-      field("Paid shop refreshes", refreshes, "0 keeps the free refresh only."),
-      append(el("div", "options-title"), icon("star"), document.createTextNode("Pet care")),
-      field("Preferred pet", pet, "Uses an available pet when this one is missing."),
-    );
-    const save = locked(btn("Save options", null, "primary"));
+        );
+        item.dataset.choice = choice.id;
+        item.setAttribute("aria-pressed", String(String(draft.value) === String(choice.id)));
+        grid.append(item);
+      }
+      form.append(grid);
+      read = () => ({ value: draft.value });
+    }
+    const save = locked(button("Save preferences", null, "primary", "check"));
     save.type = "submit";
-    form.append(append(el("div", "form-actions"), save));
-    form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      if (preview || state.status.busy || state.mutations) return;
+    form.append(
+      add(
+        el("div", "form-footer"),
+        el("span", "", farm ? "Applies to Farm " + farm.farm_number + " only." : ""),
+        save,
+      ),
+    );
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (preview || state.mutations) return;
+      const id = state.selectedFarmId;
+      action(async () => {
+        const result = await api("/api/farms/" + id + "/preferences", "PATCH", {
+          section,
+          version: pref.version,
+          ...read(),
+        });
+        if (String(id) === String(state.selectedFarmId)) {
+          state.prefs = result;
+          state.drafts = U.copy(result);
+          render();
+        }
+        toast("Preferences saved.");
+      })();
+    });
+    box.append(form);
+    main.append(box);
+  }
+  function renderShared() {
+    const form = el("form", "shared-grid"),
+      draft = state.settingsDraft;
+    const castle = locked(
+      select(
+        Array.from({ length: 30 }, (_, index) => ({ id: index + 1, name: "Level " + (index + 1) })),
+        draft.castle_target_level || 30,
+      ),
+    );
+    castle.addEventListener("change", () => (draft.castle_target_level = Number(castle.value)));
+    const training = locked(checkbox(!!draft.training_use_speedups));
+    training.addEventListener("change", () => (draft.training_use_speedups = training.checked));
+    const gold = locked(checkbox(!!draft.merchant_buy_gold));
+    gold.addEventListener("change", () => (draft.merchant_buy_gold = gold.checked));
+    const refreshes = locked(number(draft.merchant_refreshes || 0, 0, 1000));
+    refreshes.addEventListener("input", () => (draft.merchant_refreshes = Number(refreshes.value)));
+    const pet = locked(
+      select(
+        [
+          { id: 0, name: "Best available" },
+          ...(state.catalog.pets || [])
+            .filter((row) => Number(row.id) !== 0)
+            .map((row) => ({
+              ...row,
+              name: U.petNames[row.id] || row.name,
+              raw: !U.petNames[row.id],
+            })),
+        ],
+        draft.pet_preferred_id || 0,
+      ),
+    );
+    pet.addEventListener("change", () => (draft.pet_preferred_id = Number(pet.value)));
+    const cards = [
+      add(
+        el("section", "shared-card panel"),
+        panelTitle("Castle upgrades", null, "castle"),
+        field("Target castle level", castle),
+      ),
+      add(
+        el("section", "shared-card panel"),
+        panelTitle("Troop training", null, "shield"),
+        switchLabel("Use speedups for grain carts", training),
+        el("p", "card-help", "Normal training continues when speedups run out."),
+      ),
+      add(
+        el("section", "shared-card panel"),
+        panelTitle("Mysterious Merchant", null, "leaf"),
+        switchLabel("Buy offers below 50 gold", gold),
+        field("Paid shop refreshes", refreshes, "0 keeps the free refresh only."),
+      ),
+      add(
+        el("section", "shared-card panel"),
+        panelTitle("Pet care", null, "star"),
+        field("Preferred pet", pet, "Uses an available pet when this one is missing."),
+      ),
+    ];
+    form.append(...cards);
+    const save = locked(button("Save preferences", null, "primary", "check"));
+    save.type = "submit";
+    form.append(
+      add(
+        el("div", "form-footer shared-footer"),
+        el("span", "", "These choices apply to all your farms."),
+        save,
+      ),
+    );
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (preview || state.mutations) return;
       action(async () => {
         state.settings = await api("/api/settings", "PATCH", {
           castle_target_level: Number(castle.value),
@@ -968,588 +850,29 @@
           merchant_refreshes: Number(refreshes.value),
           pet_preferred_id: Number(pet.value),
         });
-        toast("Task options saved.");
+        state.settingsDraft = U.copy(state.settings);
+        toast("Preferences saved.");
       })();
     });
-    return form;
+    main.append(form);
   }
-  async function loadPreferences(id) {
-    const generation = ++prefGeneration;
-    state.prefLoading = true;
-    state.prefs = null;
-    if (state.page === "settings") renderPage();
-    try {
-      const result = preview
-        ? U.copy(previewPrefs)
-        : await api("/api/farms/" + id + "/preferences");
-      if (generation !== prefGeneration || String(id) !== String(state.selectedFarmId)) return;
-      state.prefs = result;
-      state.prefLoading = false;
-      if (state.page === "settings") renderPage();
-    } catch (e) {
-      if (generation !== prefGeneration) return;
-      state.prefLoading = false;
-      toast(e.message, true);
-      if (state.page === "settings") renderPage();
-    }
-  }
-  function renderPreferences() {
-    heading("Farm settings", "A different strategy for every farm.");
-    if (!state.farms.length) {
-      pageNode.append(
-        append(
-          panel(),
-          empty(
-            "No assigned farms",
-            "Contact the operator and share your Telegram ID to assign your farms.",
-          ),
-        ),
-      );
-      return;
-    }
-    const chooser = select(
-      state.farms.map((f) => ({ id: f.id, name: farmName(f) + " · " + f.email })),
-      state.selectedFarmId,
-    );
-    chooser.addEventListener("change", () => {
-      state.selectedFarmId = chooser.value;
-      loadPreferences(chooser.value);
-    });
-    const selector = el("div", "farm-selector section-gap");
-    selector.append(
-      field("Selected farm", chooser),
-      btn("Account details", () => openFarmDialog(selectedFarm()), "", "edit"),
-    );
-    if (state.total > 8) {
-      const prev = btn(
-          "Previous farms",
-          action(async () => {
-            await loadFarms(state.farmPage - 1);
-            await loadPreferences(state.selectedFarmId);
-          }),
-          "small",
-        ),
-        next = btn(
-          "Next farms",
-          action(async () => {
-            await loadFarms(state.farmPage + 1);
-            await loadPreferences(state.selectedFarmId);
-          }),
-          "small",
-        );
-      prev.disabled = state.farmPage === 0;
-      next.disabled = (state.farmPage + 1) * 8 >= state.total;
-      selector.append(prev, next);
-    }
-    pageNode.append(selector);
-    const tabs = el("div", "subtabs section-gap");
-    tabs.setAttribute("role", "tablist");
-    for (const [id, label] of [
-      ["gathering", "Gathering"],
-      ["research", "Research"],
-      ["fountain", "Fountain"],
-      ["heroes", "Hero levels"],
-    ]) {
-      const b = btn(
-        label,
-        () => {
-          state.prefTab = id;
-          renderPage();
-        },
-        state.prefTab === id ? "active" : "",
-      );
-      b.setAttribute("role", "tab");
-      b.setAttribute("aria-selected", String(state.prefTab === id));
-      tabs.append(b);
-    }
-    pageNode.append(tabs);
-    const box = panel();
-    if (state.prefLoading) {
-      box.append(empty("Loading preferences", "Getting the latest settings for this farm."));
-      pageNode.append(box);
-      return;
-    }
-    if (!state.prefs) {
-      box.append(
-        empty(
-          "Preferences unavailable",
-          "Reload this farm to try again.",
-          btn("Reload", () => loadPreferences(state.selectedFarmId), "", "refresh"),
-        ),
-      );
-      pageNode.append(box);
-      return;
-    }
-    const section = state.prefTab,
-      pref = state.prefs[section],
-      form = el("form");
-    let readValue;
-    const selected = selectedFarm();
-    box.append(
-      panelHead(
-        {
-          gathering: "Gathering marches",
-          research: "Research field",
-          fountain: "Treasure Fountain",
-          heroes: "Hero experience",
-        }[section],
-        farmName(selected),
-      ),
-    );
-    if (section === "gathering") {
-      form.append(
-        el(
-          "p",
-          "help-copy",
-          "Choose a resource for each march. Only the marches available to this farm will be sent. Busy or locked marches are skipped.",
-        ),
-      );
-      const grid = el("div", "slot-grid"),
-        inputs = [];
-      for (let i = 0; i < 6; i++) {
-        const choice = locked(select(state.catalog.gathering || [], pref.slots[i] || 0));
-        choice.setAttribute("aria-label", "March " + (i + 1) + " resource");
-        inputs.push(choice);
-        grid.append(
-          append(
-            el("div", "slot-card"),
-            append(
-              el("div", "slot-label"),
-              el("span", "slot-number", i + 1),
-              el("span", "", "March " + (i + 1)),
-            ),
-            choice,
-          ),
-        );
-      }
-      form.append(grid);
-      readValue = () => ({ slots: inputs.map((n) => Number(n.value)) });
-    } else if (section === "heroes") {
-      form.append(
-        el(
-          "p",
-          "help-copy",
-          "Experience books are used only for the heroes you select. Recruitment, stars and skills still apply to all available heroes. Missing heroes are skipped until recruited.",
-        ),
-      );
-      const grid = el("div", "heroes-grid"),
-        inputs = [];
-      for (const h of state.catalog.heroes || []) {
-        const check = locked(input("checkbox", ""));
-        check.checked = (pref.hero_ids || []).includes(h.id);
-        inputs.push([h.id, check]);
-        const symbol = el("span", "hero-symbol", "✦");
-        symbol.style.color = U.safeColor(h.color);
-        const label = el("span", "hero-label", h.name);
-        label.style.color = U.safeColor(h.color);
-        grid.append(append(el("label", "hero-choice"), check, symbol, label));
-      }
-      form.append(grid);
-      readValue = () => ({ hero_ids: inputs.filter((p) => p[1].checked).map((p) => p[0]) });
-    } else {
-      form.append(
-        el(
-          "p",
-          "help-copy",
-          section === "research"
-            ? "Choose one of the seven research fields. Available research uses resources from the farm and its bag."
-            : "Choose the resource this farm should collect from the Treasure Fountain.",
-        ),
-      );
-      let chosen = pref.value;
-      const grid = el("div", "choice-grid");
-      for (const choice of state.catalog[section] || []) {
-        const b = locked(
-          btn(
-            choice.name,
-            () => {
-              chosen = choice.id;
-              for (const n of grid.children) {
-                const active = n.dataset.choice === String(chosen);
-                n.classList.toggle("active", active);
-                n.setAttribute("aria-pressed", String(active));
-              }
-            },
-            "choice-card" + (String(chosen) === String(choice.id) ? " active" : ""),
-            section === "research" ? "star" : "leaf",
-          ),
-        );
-        b.dataset.choice = String(choice.id);
-        b.setAttribute("aria-pressed", String(String(chosen) === String(choice.id)));
-        grid.append(b);
-      }
-      form.append(grid);
-      readValue = () => ({ value: chosen });
-    }
-    const save = locked(
-      btn(
-        "Save " +
-          {
-            gathering: "gathering",
-            research: "research",
-            fountain: "fountain",
-            heroes: "hero selection",
-          }[section],
-        null,
-        "primary",
-        "check",
-      ),
-    );
-    save.type = "submit";
-    form.append(
-      append(
-        el("div", "form-actions"),
-        el("span", "muted", "Applies to " + farmName(selected) + " only."),
-        save,
-      ),
-    );
-    form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      if (preview || state.status.busy || state.mutations) return;
-      const id = state.selectedFarmId;
-      action(async () => {
-        const result = await api("/api/farms/" + id + "/preferences", "PATCH", {
-          section,
-          version: pref.version,
-          ...readValue(),
-        });
-        if (String(id) === String(state.selectedFarmId)) {
-          state.prefs = result;
-          renderPage();
-        }
-        toast("Farm preferences saved.");
-      })();
-    });
-    box.append(form);
-    pageNode.append(box);
-  }
-  function runSettingsForm() {
-    const form = el("form"),
-      s = state.settings,
-      from = locked(input("number", s.farm_from || 1, { min: 1, step: 1, required: "" })),
-      to = locked(input("number", s.farm_to, { min: 1, step: 1, placeholder: "Last farm" })),
-      workers = locked(
-        input("number", s.workers || 1, {
-          min: 1,
-          max: state.catalog.max_workers || 4,
-          step: 1,
-          required: "",
-        }),
-      ),
-      gap = locked(
-        input("number", s.start_delay || 0, { min: 0, max: 86400, step: "0.1", required: "" }),
-      ),
-      mode = locked(
-        select(
-          [
-            { id: "once", name: "One cycle" },
-            { id: "consecutive", name: "Consecutive cycles" },
-          ],
-          s.cycle_mode || "once",
-        ),
-      ),
-      delay = locked(
-        input("number", s.cycle_delay == null ? 60 : s.cycle_delay, {
-          min: 0,
-          max: 86400,
-          step: "0.1",
-          required: "",
-        }),
-      );
-    form.append(
-      append(
-        el("div", "form-grid"),
-        field("From farm number", from),
-        field("To farm number", to),
-        field("Farms at once", workers),
-        field("Start gap (seconds)", gap),
-        field("Cycle mode", mode),
-        field("Between cycles (seconds)", delay),
-      ),
-    );
-    const save = locked(btn("Save run settings", null, "primary"));
-    save.type = "submit";
-    form.append(append(el("div", "form-actions"), save));
-    form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      if (preview || state.status.busy || state.mutations) return;
-      action(async () => {
-        state.settings = await api("/api/settings", "PATCH", {
-          farm_from: Number(from.value),
-          farm_to: to.value ? Number(to.value) : null,
-          workers: Number(workers.value),
-          start_delay: Number(gap.value),
-          cycle_mode: mode.value,
-          cycle_delay: Number(delay.value),
-        });
-        toast("Run settings saved.");
-        syncStatus();
-      })();
-    });
-    return form;
-  }
-  function logStatus(row) {
-    const value = String(row.status || "");
-    return (
-      {
-        completed: "Completed",
-        success: "Successful",
-        ok: "Successful",
-        failed: "Failed",
-        error: "Failed",
-        stopped: "Stopped",
-        cancelled: "Stopped",
-        skipped: "Skipped",
-        unavailable: "Unavailable",
-        blocked: "Unavailable",
-      }[value] || "Operation updated"
-    );
-  }
-  function logsList(rows, compact = false) {
-    const list = el("div", compact ? "activity-list" : "log-list");
-    if (!rows.length) {
-      list.append(empty("No activity yet", "Your latest operations will appear here."));
-      return list;
-    }
-    for (const row of rows) {
-      const message = I.event(row.event) || row.message || row.summary || logStatus(row),
-        time = timeText(row.time || row.finished_at || row.created_at),
-        name = row.function_id && U.functions.find((f) => f.id === row.function_id);
-      const text = (name ? I.t(name.name) + " · " : "") + I.t(message);
-      if (compact) {
-        list.append(
-          append(
-            el("div", "activity-item"),
-            el("span", "activity-dot"),
-            append(
-              el("div"),
-              el("strong", "", text),
-              el("p", "", (row.farm_number ? "Farm " + row.farm_number + " · " : "") + time),
-            ),
-          ),
-        );
-      } else
-        list.append(
-          append(
-            el("div", "log-row"),
-            el("time", "log-time", time),
-            append(
-              el("div"),
-              row.farm_number ? el("div", "log-farm", "FARM " + row.farm_number) : null,
-              el("p", "", text),
-            ),
-          ),
-        );
-    }
-    return list;
-  }
-  async function loadLogs(farmId) {
-    const generation = ++logGeneration;
-    const result = await api(
-      "/api/logs?limit=30" + (farmId ? "&farm_id=" + encodeURIComponent(farmId) : ""),
-    );
-    if (generation !== logGeneration) return;
-    state.logs = result.rows || [];
-  }
-  function renderRun() {
-    heading("Run & logs", "Start your saved routine and follow each step.");
-    pageNode.append(metrics());
-    const layout = el("div", "run-layout"),
-      settings = panel();
-    settings.append(panelHead("Run settings", "Your enabled farms only"), runSettingsForm());
-    const right = el("div", "stack"),
-      control = panel(),
-      start = btn(
-        "Start run",
-        action(async () => {
-          if (state.dirty) throw new Error("Save your function changes before starting.");
-          state.status = await api("/api/run", "POST", {});
-          syncStatus();
-          toast("Run requested.");
-        }),
-        "primary",
-        "play",
-      ),
-      stop = btn(
-        "Stop safely",
-        action(async () => {
-          state.status = await api("/api/stop", "POST", {});
-          syncStatus();
-          toast("Safe stop requested.");
-        }),
-        "",
-        "stop",
-      );
-    start.dataset.start = "";
-    stop.dataset.stop = "";
-    const status = el("span", "badge");
-    status.dataset.statusLabel = "";
-    control.append(
-      panelHead("Run control", "Follows your saved function order", status),
-      append(el("div", "run-buttons"), start, stop),
-    );
-    const fill = el("div", "progress-fill");
-    fill.dataset.progress = "";
-    const progress = append(el("div", "progress-track"), fill);
-    progress.setAttribute("role", "progressbar");
-    progress.setAttribute("aria-label", "Farm progress");
-    control.append(progress);
-    const cycle = el("span");
-    cycle.dataset.cycle = "";
-    const progressText = el("span");
-    progressText.dataset.progressText = "";
-    control.append(append(el("div", "progress-label"), cycle, progressText));
-    const message = el("p", "help-copy section-gap");
-    message.dataset.runMessage = "";
-    control.append(message);
-    const logs = panel(),
-      filter = select(
-        [
-          { id: "", name: "All my farms" },
-          ...state.farms.map((f) => ({ id: f.id, name: farmName(f) })),
-        ],
-        "",
-      ),
-      refresh = iconBtn(
-        "Refresh activity",
-        "refresh",
-        action(async () => {
-          await loadLogs(filter.value);
-          const holder = document.getElementById("run-log-content");
-          if (holder) holder.replaceChildren(logsList(state.logs));
-        }),
-      );
-    filter.className = "logs-filter";
-    filter.setAttribute("aria-label", "Filter logs by farm");
-    filter.addEventListener(
-      "change",
-      action(async () => {
-        await loadLogs(filter.value);
-        const holder = document.getElementById("run-log-content");
-        if (holder) holder.replaceChildren(logsList(state.logs));
-      }),
-    );
-    logs.append(
-      panelHead(
-        "Activity log",
-        "Your latest operations",
-        append(el("div", "row"), filter, refresh),
-      ),
-    );
-    const holder = el("div");
-    holder.id = "run-log-content";
-    holder.append(
-      logsList([...(state.status.events || []).slice().reverse(), ...state.logs].slice(0, 40)),
-    );
-    logs.append(holder);
-    right.append(control, logs);
-    layout.append(settings, right);
-    pageNode.append(layout);
-  }
-  function syncStatus() {
-    const s = state.status || {},
-      busy = !!s.busy,
-      lockedNow = preview || busy || state.mutations > 0;
-    for (const n of document.querySelectorAll("[data-mutation]"))
-      n.disabled = lockedNow || n.dataset.boundary === "true";
-    for (const n of document.querySelectorAll("[data-status-label]")) n.textContent = statusLabel();
-    for (const n of document.querySelectorAll("[data-metric]"))
-      n.textContent = {
-        parallel:
-          U.count(s.active || 0) + " / " + U.count(s.workers || state.settings.workers || 1),
-        progress: U.count(s.processed || 0) + " / " + U.count(s.total || 0),
-        success: U.count(s.all_functions_succeeded || 0),
-        failed: U.count(s.failed_functions || 0),
-      }[n.dataset.metric];
-    for (const n of document.querySelectorAll("[data-start]"))
-      n.disabled = preview || busy || state.mutations > 0 || !state.total;
-    for (const n of document.querySelectorAll("[data-stop]"))
-      n.disabled = preview || !busy || s.state === "stopping" || state.mutations > 0;
-    for (const n of document.querySelectorAll("[data-progress]")) {
-      const percent = s.total ? Math.min(100, (100 * (s.processed || 0)) / s.total) : 0;
-      n.style.width = percent + "%";
-      n.parentNode.setAttribute("aria-valuenow", String(percent));
-      n.parentNode.setAttribute("aria-valuemin", "0");
-      n.parentNode.setAttribute("aria-valuemax", "100");
-    }
-    for (const n of document.querySelectorAll("[data-cycle]"))
-      n.textContent = "Cycle " + (s.cycle || 0);
-    for (const n of document.querySelectorAll("[data-progress-text]"))
-      n.textContent = U.count(s.processed || 0) + " of " + U.count(s.total || 0) + " farms";
-    for (const n of document.querySelectorAll("[data-run-message]"))
-      n.textContent =
-        I.event((s.events || []).length ? s.events[s.events.length - 1].event : s.state) ||
-        s.message ||
-        "Ready when you are. Only enabled farms and selected functions will run.";
-  }
-  async function refresh() {
-    if (preview) {
-      toast("You are viewing read-only example data.");
-      return;
-    }
-    await Promise.all([
-      loadFarms(),
-      loadLogs(),
-      api("/api/status").then((s) => (state.status = s)),
-    ]);
-    renderPage();
-  }
-  async function poll() {
-    if (preview || !auth || !pageNode || polling || document.hidden) return;
-    polling = true;
-    const wasBusy = state.status.busy,
-      revision = mutationSerial;
-    try {
-      const result = await api("/api/status");
-      if (revision !== mutationSerial || state.mutations) return;
-      state.status = result;
-      connectionFailed = false;
-      syncStatus();
-      if (state.page === "run" && state.status.busy) {
-        const holder = document.getElementById("run-log-content");
-        if (holder)
-          holder.replaceChildren(
-            logsList(
-              [...(state.status.events || []).slice().reverse(), ...state.logs].slice(0, 40),
-            ),
-          );
-      }
-      if (wasBusy && !state.status.busy) {
-        await Promise.all([loadFarms(), loadLogs()]);
-        if (!modalRoot.childElementCount) renderPage();
-      }
-    } catch (_) {
-      connectionFailed = true;
-      syncStatus();
-    } finally {
-      polling = false;
-    }
-  }
-  function lockedScreen(message, error = false) {
+  function gate(message) {
     app.replaceChildren();
     app.removeAttribute("aria-busy");
-    const outer = el("main", "locked-screen"),
-      card = panel("locked-card"),
-      logo = el("img");
-    logo.src = "./mark.svg";
-    logo.alt = "SULTARO";
-    logo.width = 64;
-    logo.height = 64;
-    const link = el("a", "button-link", "Open SULTARO in Telegram");
+    const card = add(
+      el("section", "gate-card panel"),
+      languageControl(),
+      brand(),
+      el("h1", "", "Your farms, your choices."),
+      el("p", "", message || "Open SULTARO from Telegram to see your farms."),
+    );
+    const link = el("a", "primary button-link", "Open in Telegram");
     link.href = U.botUrl(config.botUsername);
     link.rel = "noopener noreferrer";
     link.append(icon("arrow"));
-    card.append(
-      languageControl(),
-      logo,
-      badge("SULTARO V1", "neutral"),
-      el("h1", "", error ? "Let’s reconnect" : "Your empire starts here"),
-      el("p", "", message),
-      link,
-    );
-    if (error) card.append(btn("Try again", boot, "", "refresh"));
-    outer.append(card);
-    app.append(outer);
+    card.append(link);
+    if (message) card.append(button("Try again", boot, "subtle", "refresh"));
+    app.append(add(el("main", "gate"), card));
   }
   const previewPrefs = {
     gathering: { slots: [1003, 1002, 1003, 1002, 0, 0], version: 1 },
@@ -1558,76 +881,74 @@
     heroes: { hero_ids: [1, 2], version: 1 },
   };
   function seedPreview() {
-    state.user = { id: 123456789, first_name: "Alex", username: "preview" };
+    state.user = { id: 123456789, first_name: "Alex", locale: "en" };
     state.farms = [
       {
         id: "demo-1",
         farm_number: 1,
-        email: "farm.one@example.test",
-        enabled: true,
-        has_session: true,
-        session_status: "Connected",
+        game_user_id: 90010001,
         castle_level: 14,
         kingdom: 52,
-        version: 1,
+        lord_level: 18,
+        vip: 4,
+        wheat: 1240000,
+        wood: 980000,
+        iron: 352000,
+        gold_total: 520,
       },
       {
         id: "demo-2",
         farm_number: 2,
-        email: "farm.two@example.test",
-        enabled: true,
-        has_session: true,
-        session_status: "Connected",
+        game_user_id: 90010002,
         castle_level: 12,
         kingdom: 52,
-        version: 1,
+        lord_level: 16,
+        vip: 3,
+        wheat: 782000,
+        wood: 640000,
+        iron: 186000,
+        gold_total: 340,
       },
       {
         id: "demo-3",
         farm_number: 3,
-        email: "farm.three@example.test",
-        enabled: true,
-        has_session: true,
-        session_status: "Connected",
+        game_user_id: 90010003,
         castle_level: 8,
         kingdom: 52,
-        version: 1,
+        lord_level: 11,
+        vip: 2,
+        wheat: 265000,
+        wood: 198000,
+        iron: 68000,
+        gold_total: 180,
       },
     ];
     state.total = 3;
     state.selectedFarmId = "demo-1";
+    state.activities = U.normalizeActivities(
+      U.activities.map((row) => ({
+        ...row,
+        enabled: [
+          "upgrade",
+          "rewards",
+          "gathering",
+          "troop_training",
+          "hero_upgrade",
+          "research",
+          "alliance_help",
+          "chapters",
+        ].includes(row.id),
+      })),
+    );
     state.settings = {
-      farm_from: 1,
-      farm_to: 3,
-      workers: 2,
-      start_delay: 0.5,
-      cycle_mode: "consecutive",
-      cycle_delay: 60,
       castle_target_level: 30,
       training_use_speedups: true,
       merchant_buy_gold: false,
       merchant_refreshes: 0,
       pet_preferred_id: 0,
     };
-    state.functions = U.ordered(
-      U.functions.map((f) => ({
-        ...f,
-        enabled: [
-          "upgrade",
-          "rewards",
-          "hero_hall",
-          "hero_upgrade",
-          "gathering",
-          "troop_training",
-          "research",
-          "hospital",
-          "alliance_help",
-          "chapters",
-        ].includes(f.id),
-      })),
-    );
+    state.settingsDraft = U.copy(state.settings);
     state.catalog = {
-      max_workers: 4,
       gathering: [
         { id: 0, name: "Disabled" },
         { id: 1003, name: "Wood" },
@@ -1654,41 +975,20 @@
         { id: "special", name: "Special" },
       ],
       pets: [
-        { id: 1, name: "Falcon" },
-        { id: 2, name: "Tiger" },
+        { id: 1263, name: "Falcon" },
+        { id: 1262, name: "Lion" },
       ],
       heroes: [
-        { id: 1, name: "Mehmed II", color: "#e9bc72" },
-        { id: 2, name: "Kara Murad", color: "#e9bc72" },
-        { id: 3, name: "Osman", color: "#bb99f4" },
-        { id: 4, name: "Selim", color: "#bb99f4" },
-        { id: 5, name: "Ibrahim", color: "#7bb8f7" },
-        { id: 6, name: "Mustafa", color: "#7bb8f7" },
+        { id: 1, name: "Mehmed II", color: "#d8b76a" },
+        { id: 2, name: "Kara Murad", color: "#d8b76a" },
+        { id: 3, name: "Osman", color: "#b998dd" },
+        { id: 4, name: "Selim", color: "#b998dd" },
+        { id: 5, name: "Ibrahim", color: "#80acd3" },
+        { id: 6, name: "Mustafa", color: "#80acd3" },
       ],
     };
     state.prefs = U.copy(previewPrefs);
-    state.status = {
-      state: "completed",
-      busy: false,
-      cycle: 1,
-      active: 0,
-      workers: 2,
-      total: 3,
-      processed: 3,
-      all_functions_succeeded: 3,
-      failed_functions: 0,
-      message: "Cycle completed. All selected functions finished successfully.",
-      events: [],
-    };
-    state.logs = [
-      {
-        time: Date.now() / 1000 - 30,
-        farm_number: 3,
-        message: "All selected functions completed.",
-      },
-      { time: Date.now() / 1000 - 60, farm_number: 2, message: "Resource gathering marches sent." },
-      { time: Date.now() / 1000 - 90, farm_number: 1, message: "Available rewards collected." },
-    ];
+    state.drafts = U.copy(previewPrefs);
   }
   async function boot() {
     if (window.SULTARO_CONFIG_READY) await window.SULTARO_CONFIG_READY;
@@ -1700,79 +1000,37 @@
       return;
     }
     if (!auth) {
-      lockedScreen(
-        "Open this dashboard from the SULTARO bot to connect your Telegram account and manage your own farms.",
-      );
+      gate();
       return;
     }
     if (tg) {
       tg.ready();
       tg.expand();
-      if (tg.setHeaderColor) tg.setHeaderColor("#0b1220");
-      if (tg.setBackgroundColor) tg.setBackgroundColor("#0b1220");
+      if (tg.setHeaderColor) tg.setHeaderColor("#0c1514");
+      if (tg.setBackgroundColor) tg.setBackgroundColor("#0c1514");
     }
     try {
-      const [me, catalog, functions, settings, farms, status, logs] = await Promise.all([
+      const [me, catalog, activities, settings, farms] = await Promise.all([
         api("/api/me"),
         api("/api/catalog"),
-        api("/api/functions"),
+        api("/api/activities"),
         api("/api/settings"),
         api("/api/farms?page=0&limit=8"),
-        api("/api/status"),
-        api("/api/logs?limit=30"),
       ]);
       state.user = me.user;
       I.setLocale(me.user.locale || "en");
       state.catalog = catalog;
-      state.functions = U.ordered(functions.rows);
+      state.activities = U.normalizeActivities(activities.rows);
       state.settings = settings;
+      state.settingsDraft = U.copy(settings);
       state.farms = farms.rows || [];
       state.total = farms.total || 0;
       state.selectedFarmId = state.farms[0] ? state.farms[0].id : null;
-      state.status = status;
-      state.logs = logs.rows || [];
       layout();
-    } catch (e) {
-      lockedScreen(e.message, true);
+    } catch (error) {
+      gate(error.message);
     }
-  }
-  function languageControl() {
-    const control = select(
-      I.languages.map((l) => ({ id: l.code, name: l.name })),
-      I.locale(),
-    );
-    control.className = "language-select";
-    control.setAttribute("aria-label", "Language");
-    control.dataset.languageSelect = "true";
-    control.addEventListener("change", async () => {
-      const previous = I.locale(),
-        locale = control.value;
-      control.disabled = true;
-      try {
-        if (auth && !preview) {
-          const result = await api("/api/me", "PATCH", { locale });
-          state.user = result.user;
-        }
-        I.setLocale(locale);
-        if (pageNode) layout();
-        else
-          lockedScreen(
-            "Open this dashboard from the SULTARO bot to connect your Telegram account and manage your own farms.",
-          );
-        toast("Language saved.");
-      } catch (error) {
-        control.value = previous;
-        toast(error.message, true);
-      } finally {
-        control.disabled = false;
-      }
-    });
-    return control;
   }
   I.observe(document.body);
   boot();
-  setInterval(poll, 8000);
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) poll();
-  });
 })();

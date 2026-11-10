@@ -4,7 +4,7 @@
   else root.SultaroUI = value;
 })(typeof window !== "undefined" ? window : globalThis, function () {
   "use strict";
-  const functions = [
+  const activities = [
     ["upgrade", "Castle upgrades", "castle"],
     ["building_upgrade", "Resource buildings", "castle"],
     ["rewards", "Reward collection", "resources"],
@@ -27,6 +27,23 @@
     ["pet_care", "Pet care", "heroes"],
     ["alliance_help", "Alliance member help", "alliance"],
   ].map(([id, name, group]) => ({ id, name, group }));
+  const petNames = {
+    1261: "Deer",
+    1262: "Lion",
+    1263: "Falcon",
+    1264: "Wolf",
+    1265: "Leopard",
+    1266: "War bear",
+    1267: "Giant elephant",
+    1268: "Wild bull",
+    1269: "Kangal dog",
+    1270: "Saber-toothed tiger",
+    1271: "Rhinoceros",
+    1272: "Sandstorm phoenix",
+    1273: "Rebel tiger",
+    1274: "Death lizard",
+    1275: "Hydra",
+  };
   const groups = [
     { id: "castle", name: "Castle & buildings", icon: "castle" },
     { id: "resources", name: "Resources", icon: "leaf" },
@@ -35,17 +52,17 @@
     { id: "alliance", name: "Alliance", icon: "users" },
     { id: "events", name: "Events", icon: "spark" },
   ];
-  function ordered(rows) {
-    const known = new Map(functions.map((row) => [row.id, row]));
-    const seen = new Set();
-    const result = [];
+  function normalizeActivities(rows) {
+    const known = new Map(activities.map((a) => [a.id, a])),
+      seen = new Set(),
+      result = [];
     for (const row of Array.isArray(rows) ? rows : []) {
       if (known.has(row.id) && !seen.has(row.id)) {
         result.push({ ...known.get(row.id), enabled: row.enabled === true });
         seen.add(row.id);
       }
     }
-    for (const row of functions) if (!seen.has(row.id)) result.push({ ...row, enabled: false });
+    for (const row of activities) if (!seen.has(row.id)) result.push({ ...row, enabled: false });
     return result;
   }
   function toggle(rows, id, enabled) {
@@ -61,60 +78,50 @@
             : row.enabled,
     }));
   }
-  function move(rows, index, offset) {
-    const result = rows.slice();
-    const destination = index + offset;
-    if (index < 0 || index >= rows.length || destination < 0 || destination >= rows.length)
-      return result;
-    const [row] = result.splice(index, 1);
-    result.splice(destination, 0, row);
-    return result;
-  }
-  function apiUrl(base, path, pageHostname) {
+  function apiUrl(base, path, hostname) {
     if (!base || typeof base !== "string")
-      throw new Error("Dashboard connection is not configured yet.");
-    const url = new URL(base);
-    const local = ["localhost", "127.0.0.1", "[::1]"];
+      throw new Error("This page is temporarily unavailable. Please try again later.");
+    const url = new URL(base),
+      local = ["localhost", "127.0.0.1", "[::1]"];
     if (
       url.username ||
       url.password ||
       url.search ||
       url.hash ||
       (url.protocol !== "https:" &&
-        !(url.protocol === "http:" && local.includes(url.hostname) && local.includes(pageHostname)))
-    ) {
-      throw new Error("The dashboard connection must use HTTPS.");
-    }
-    if (!path.startsWith("/api/")) throw new Error("Invalid dashboard request.");
+        !(url.protocol === "http:" && local.includes(url.hostname) && local.includes(hostname)))
+    )
+      throw new Error("This page is temporarily unavailable. Please try again later.");
+    if (!path.startsWith("/api/")) throw new Error("Please try again.");
     return url.href.replace(/\/$/, "") + path;
   }
-  function botUrl(username) {
-    return typeof username === "string" && /^[A-Za-z0-9_]{5,32}$/.test(username)
-      ? "https://t.me/" + username
+  function botUrl(name) {
+    return typeof name === "string" && /^[A-Za-z0-9_]{5,32}$/.test(name)
+      ? "https://t.me/" + name
       : "https://t.me/sultaro";
   }
   function count(value) {
-    return Number.isFinite(Number(value)) ? new Intl.NumberFormat("en").format(Number(value)) : "—";
-  }
-  function number(value, fallback = 0) {
-    return Number.isFinite(Number(value)) ? Number(value) : fallback;
+    return value === null || value === undefined || value === ""
+      ? "—"
+      : Number.isFinite(Number(value))
+        ? new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(
+            Number(value),
+          )
+        : "—";
   }
   function safeColor(value) {
-    return /^#[0-9a-f]{6}$/i.test(String(value)) ? value : "#a8b7ca";
+    return /^#[0-9a-f]{6}$/i.test(String(value)) ? value : "#c7c2ad";
   }
-  function copy(value) {
-    return JSON.parse(JSON.stringify(value));
-  }
+  const copy = (value) => JSON.parse(JSON.stringify(value));
   return {
-    functions,
+    activities,
     groups,
-    ordered,
+    petNames,
+    normalizeActivities,
     toggle,
-    move,
     apiUrl,
     botUrl,
     count,
-    number,
     safeColor,
     copy,
   };
