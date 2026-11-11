@@ -10,16 +10,16 @@
     ["rewards", "Reward collection", "resources"],
     ["race", "Race event", "events"],
     ["hero_hall", "Hero Hall", "heroes"],
-    ["military_port", "Military Port", "army"],
+    ["military_port", "Military Port", "daily"],
     ["hero_upgrade", "Hero development", "heroes"],
-    ["invaders", "Invader attacks", "army"],
+    ["invaders", "Invader attacks", "map"],
     ["gathering", "Resource gathering", "resources"],
-    ["troop_training", "Troop training", "army"],
-    ["chapters", "Chapter tasks", "castle"],
+    ["troop_training", "Troop training", "resources"],
+    ["chapters", "Chapter tasks", "daily"],
     ["alliance_donation", "Alliance donations", "alliance"],
     ["fountain", "Treasure Fountain", "resources"],
     ["research", "Research", "castle"],
-    ["hospital", "Hospital healing", "army"],
+    ["hospital", "Hospital healing", "daily"],
     ["alliance_treasure", "Alliance treasure", "alliance"],
     ["magic_palace", "Magic Palace", "events"],
     ["mystery_temple", "Mysterious Temple", "events"],
@@ -41,25 +41,67 @@
     },
   };
   const groups = [
-    { id: "castle", name: "Castle & buildings", icon: "castle" },
-    { id: "resources", name: "Resources", icon: "leaf" },
-    { id: "army", name: "Army", icon: "shield" },
-    { id: "heroes", name: "Heroes & pets", icon: "star" },
+    { id: "resources", name: "Resources & troops", icon: "leaf" },
+    { id: "daily", name: "Daily routine", icon: "check" },
+    { id: "heroes", name: "Heroes & regalia", icon: "star" },
+    { id: "map", name: "World map", icon: "gem" },
     { id: "alliance", name: "Alliance", icon: "users" },
-    { id: "events", name: "Events", icon: "spark" },
+    { id: "castle", name: "Buildings & research", icon: "castle" },
+    { id: "events", name: "Events & bonuses", icon: "spark" },
+    { id: "protection", name: "Protection", icon: "shield" },
   ];
-  function normalizeActivities(rows) {
-    const known = new Map(activities.map((a) => [a.id, a])),
+  function normalizeActivities(rows, catalog) {
+    const descriptors = Array.isArray(catalog) && catalog.length ? catalog : activities;
+    const publicNames = new Map(activities.map(row => [row.id, row.name]));
+    const known = new Map(descriptors.filter(row => row && typeof row.id === "string" &&
+      typeof row.name === "string" && groups.some(group => group.id === row.group)).map(row =>
+      [row.id, { id: row.id, name: publicNames.get(row.id) || row.name, group: row.group }])),
       seen = new Set(),
       result = [];
     for (const row of Array.isArray(rows) ? rows : []) {
-      if (known.has(row.id) && !seen.has(row.id)) {
+      if (row && known.has(row.id) && !seen.has(row.id)) {
         result.push({ ...known.get(row.id), enabled: row.enabled === true });
         seen.add(row.id);
       }
     }
-    for (const row of activities) if (!seen.has(row.id)) result.push({ ...row, enabled: false });
+    for (const row of known.values()) if (!seen.has(row.id)) result.push({ ...row, enabled: false });
     return result;
+  }
+  function activityOptions(specs, values) {
+    const result = {};
+    for (const spec of specs || []) {
+      const fields = {};
+      for (const field of spec.fields || []) {
+        if (!["boolean", "integer", "choice", "multi_choice"].includes(field.type)) continue;
+        fields[field.key] = values && values[spec.id] &&
+          Object.prototype.hasOwnProperty.call(values[spec.id], field.key)
+          ? values[spec.id][field.key] : field.default;
+      }
+      if (Object.keys(fields).length) result[spec.id] = fields;
+    }
+    return result;
+  }
+  function optionChanges(specs, before, after) {
+    const left = activityOptions(specs, before), right = activityOptions(specs, after), changes = {};
+    for (const [id, fields] of Object.entries(right)) for (const [key, value] of Object.entries(fields)) {
+      const equal = Array.isArray(value) && Array.isArray(left[id][key])
+        ? value.length === left[id][key].length && value.every(item => left[id][key].includes(item))
+        : left[id][key] === value;
+      if (!equal) (changes[id] || (changes[id] = {}))[key] = value;
+    }
+    return changes;
+  }
+  function validOptions(specs, values) {
+    for (const spec of specs || []) for (const field of spec.fields || []) {
+      if (!values[spec.id] || !Object.prototype.hasOwnProperty.call(values[spec.id], field.key)) continue;
+      const value = values[spec.id][field.key];
+      if (field.type === "boolean" && typeof value !== "boolean") return false;
+      if (field.type === "integer" && (!Number.isInteger(value) || value < field.min || value > field.max)) return false;
+      if (field.type === "choice" && !(field.choices || []).some(choice => choice.id === value)) return false;
+      if (field.type === "multi_choice" && (!Array.isArray(value) || new Set(value).size !== value.length ||
+        value.some(item => !(field.choices || []).some(choice => choice.id === item)))) return false;
+    }
+    return true;
   }
   function toggle(rows, id, enabled) {
     return rows.map((row) => ({
@@ -128,6 +170,9 @@
     groups,
     choiceLabels,
     normalizeActivities,
+    activityOptions,
+    optionChanges,
+    validOptions,
     toggle,
     sameActivityChoices,
     apiUrl,

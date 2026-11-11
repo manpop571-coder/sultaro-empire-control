@@ -33,6 +33,15 @@
     activityLoadError: false,
     activityPendingId: null,
     activityExcludedSaved: false,
+    activityGroup: "all",
+    settingsGroup: "all",
+    activityAutomation: null,
+    activityOptionsDraft: {},
+    activitySaving: false,
+    statsDay: new Date().toISOString().slice(0, 10),
+    statsData: null,
+    statsLoading: false,
+    statsError: false,
     settings: {},
     settingsDraft: {},
     prefs: null,
@@ -48,6 +57,7 @@
     prefGeneration = 0,
     activityFarmGeneration = 0,
     activityGeneration = 0,
+    statsGeneration = 0,
     fieldNumber = 0;
   const shapes = {
     castle: '<path d="M3 21V8h4V4h3v4h4V4h3v4h4v13M2 21h20M10 21v-6h4v6M7 12h1m8 0h1"/>',
@@ -176,14 +186,14 @@
   }
   function syncLocks() {
     for (const node of document.querySelectorAll("[data-mutation]"))
-      node.disabled = preview || state.mutations > 0;
+      node.disabled = preview || state.mutations > 0 || state.activitySaving;
     for (const node of document.querySelectorAll("[data-activity-source]"))
-      node.disabled = state.mutations > 0;
+      node.disabled = state.mutations > 0 || state.activitySaving;
     for (const node of document.querySelectorAll("[data-activity-save]"))
-      node.disabled = preview || state.mutations > 0 || !state.activityReady ||
+      node.disabled = preview || state.mutations > 0 || state.activitySaving || !state.activityReady ||
         state.activityLoading || !state.activityTargets.size || state.activityTargets.size > 1000;
     for (const node of document.querySelectorAll("[data-activity-all]"))
-      node.disabled = preview || state.mutations > 0 || state.activityFarms.length > 1000;
+      node.disabled = preview || state.mutations > 0 || state.activitySaving || state.activityFarms.length > 1000;
   }
   async function api(path, method = "GET", body) {
     if (preview) throw new Error("This is a read-only preview.");
@@ -245,7 +255,9 @@
     window.scrollTo({ top: 0, behavior: "instant" });
     if (page === "activities" && !state.activityFarmsLoaded && !state.activityFarmsLoading)
       loadActivityFarms();
-    if (
+    if (page === "settings" && state.tab === "balances" && state.selectedFarmId)
+      loadResourceStats(state.selectedFarmId);
+    else if (
       page === "settings" &&
       state.tab !== "shared" &&
       state.selectedFarmId &&
@@ -408,6 +420,8 @@
       state.selectedFarmId = state.farms[0] ? state.farms[0].id : null;
       state.prefs = null;
       state.drafts = {};
+      state.statsData = null;
+      statsGeneration++;
     }
   }
   function pagination() {
@@ -416,7 +430,10 @@
         action(async () => {
           await loadFarms(state.pageNumber - 1);
           render();
-          if (state.page === "settings") loadPreferences(state.selectedFarmId);
+          if (state.page === "settings") {
+            if (state.tab === "balances") loadResourceStats(state.selectedFarmId);
+            else loadPreferences(state.selectedFarmId);
+          }
         }),
         "subtle",
       ),
@@ -425,7 +442,10 @@
         action(async () => {
           await loadFarms(state.pageNumber + 1);
           render();
-          if (state.page === "settings") loadPreferences(state.selectedFarmId);
+          if (state.page === "settings") {
+            if (state.tab === "balances") loadResourceStats(state.selectedFarmId);
+            else loadPreferences(state.selectedFarmId);
+          }
         }),
         "subtle",
       );
@@ -580,16 +600,21 @@
     state.activityLoadError = false;
     state.activityPendingId = null;
     state.activityExcludedSaved = false;
+    state.activityAutomation = null;
+    state.activityOptionsDraft = {};
     state.dirty = false;
     if (state.page === "activities") render();
     try {
-      const result = preview
-        ? { farm_id: id, rows: U.copy(previewActivityChoices[id] || []) }
-        : await api("/api/activities?farm_id=" + encodeURIComponent(id));
+      const [result, preferences] = preview
+        ? [{ farm_id: id, rows: U.copy(previewActivityChoices[id] || []) }, U.copy(previewPrefs)]
+        : await Promise.all([api("/api/activities?farm_id=" + encodeURIComponent(id)),
+            activitySpecs().length ? api("/api/farms/" + encodeURIComponent(id) + "/preferences") : Promise.resolve({})]);
       if (generation !== activityGeneration || String(id) !== state.activitySourceId) return;
       if (String(result.farm_id) !== String(id)) throw new Error("Please refresh the page before trying again.");
-      state.activities = U.normalizeActivities(result.rows);
+      state.activities = U.normalizeActivities(result.rows, state.catalog.activities);
       state.activitySavedRows = U.copy(state.activities);
+      state.activityAutomation = preferences.automation || null;
+      state.activityOptionsDraft = U.activityOptions(activitySpecs(), state.activityAutomation && state.activityAutomation.options);
       state.activityLoading = false;
       state.activityReady = true;
       if (state.page === "activities") render();
@@ -602,6 +627,7 @@
     }
   }
   function changeActivitySource(id) {
+    if (state.activitySaving) return;
     if (String(id) === state.activitySourceId) return;
     if (state.dirty) {
       state.activityPendingId = String(id);
@@ -662,28 +688,140 @@
     return box;
   }
   async function saveFarmActivities() {
-    if (preview || state.mutations || !state.activityReady || state.activityLoading) return;
+    if (preview || state.mutations || state.activitySaving || !state.activityReady || state.activityLoading) return;
     const targets = Array.from(state.activityTargets);
     if (!targets.length || targets.length > 1000) return;
     const source = state.activitySourceId;
-    const result = await api("/api/activities", "PATCH", {
-      farm_ids: targets,
-      rows: state.activities.map(row => ({ id: row.id, enabled: row.enabled })),
-    });
+    const specs = activitySpecs(), changes = U.optionChanges(specs,
+      state.activityAutomation && state.activityAutomation.options, state.activityOptionsDraft);
+    const options = U.copy(changes);
+    // Copy the displayed choices for enabled services, leaving other preferences intact.
+    for (const row of state.activities) if (row.enabled && state.activityOptionsDraft[row.id])
+      options[row.id] = U.copy(state.activityOptionsDraft[row.id]);
+    if (!U.validOptions(specs, options)) throw new Error("Please check your choices and try again.");
+    if (Object.keys(options).length && !state.activityAutomation)
+      throw new Error("Please refresh the page before trying again.");
+    state.activitySaving = true;
+    syncLocks();
+    let result;
+    try {
+      // Resolve all versions before writing; conflicts remain visible rather than overwriting newer choices.
+      const versions = new Map();
+      if (Object.keys(options).length) for (const id of targets) {
+        const pref = id === source ? state.activityAutomation :
+          (await api("/api/farms/" + encodeURIComponent(id) + "/preferences")).automation;
+        if (!pref || !Number.isInteger(pref.version)) throw new Error("Please refresh the page before trying again.");
+        versions.set(id, pref.version);
+      }
+      result = await api("/api/activities", "PATCH", {
+        farm_ids: targets,
+        rows: state.activities.map(row => ({ id: row.id, enabled: row.enabled })),
+      });
+      for (const [id, version] of versions) {
+        const saved = await api("/api/farms/" + encodeURIComponent(id) + "/preferences", "PATCH", {
+          section: "automation", version, options,
+        });
+        if (id === source) state.activityAutomation = saved.automation;
+        if (String(id) === String(state.selectedFarmId)) { state.prefs = saved; state.drafts = U.copy(saved); }
+      }
+    } catch (error) {
+      // The batch may be partially saved. A fresh read is required before another save.
+      if (result) {
+        state.activityReady = false;
+        state.activityLoadError = true;
+        throw new Error("Some choices may have been saved. Reload the farm choices before trying again.");
+      }
+      throw error;
+    } finally {
+      state.activitySaving = false;
+      syncLocks();
+      if (!state.activityReady) render();
+    }
     if (source === state.activitySourceId) {
       if (targets.includes(source)) {
-        state.activities = U.normalizeActivities(result.rows);
+        state.activities = U.normalizeActivities(result.rows, state.catalog.activities);
         state.activitySavedRows = U.copy(state.activities);
         state.dirty = false;
         state.activityExcludedSaved = false;
         state.activityPendingId = null;
       } else {
-        state.dirty = !U.sameActivityChoices(state.activities, state.activitySavedRows);
+        updateActivityDirty();
         state.activityExcludedSaved = true;
       }
       render();
     }
     toast("Choices saved for " + result.applied_count + " farms.");
+  }
+  function activitySpecs() {
+    return Array.isArray(state.catalog.activity_settings) ? state.catalog.activity_settings : [];
+  }
+  function publicLabel(row, key = "label") {
+    return I.locale() === "ar" && row.arabic ? row.arabic : I.t(row[key] || "Activity options");
+  }
+  function updateActivityDirty() {
+    state.dirty = !U.sameActivityChoices(state.activities, state.activitySavedRows) ||
+      Object.keys(U.optionChanges(activitySpecs(), state.activityAutomation && state.activityAutomation.options,
+        state.activityOptionsDraft)).length > 0;
+  }
+  function groupTabs(selected, rows, change, scope) {
+    const tabs = el("div", "settings-tabs activity-group-tabs");
+    tabs.setAttribute("role", "tablist");
+    tabs.setAttribute("aria-label", I.t("Activity categories"));
+    const available = [{ id: "all", name: "All activities", icon: "sliders" },
+      ...U.groups.filter(group => rows.some(row => row.group === group.id))];
+    for (const group of available) {
+      const item = button(group.name, () => change(group.id), selected === group.id ? "active" : "", group.icon);
+      item.setAttribute("role", "tab");
+      item.setAttribute("aria-selected", String(selected === group.id));
+      item.dataset.activityGroup = group.id;
+      item.dataset.groupScope = scope;
+      tabs.append(item);
+    }
+    return tabs;
+  }
+  function optionsFields(spec, draft, onChange) {
+    const box = el("div", "activity-options-fields");
+    if (spec.id === "auto_shield") box.append(el("p", "card-help",
+      "Shield checks happen during farm visits. Renewal between visits is not guaranteed."));
+    for (const descriptor of spec.fields || []) {
+      if (!["boolean", "integer", "choice", "multi_choice"].includes(descriptor.type)) continue;
+      let control;
+      const value = draft[descriptor.key] === undefined ? descriptor.default : draft[descriptor.key];
+      if (descriptor.type === "multi_choice") {
+        const choices = el("fieldset", "activity-multi-choice");
+        choices.append(el("legend", "", publicLabel(descriptor)));
+        const grid = el("div", "activity-multi-grid");
+        for (const row of descriptor.choices || []) {
+          const check = locked(checkbox(Array.isArray(value) && value.includes(row.id)));
+          check.value = row.id;
+          check.dataset.activityOption = spec.id + ":" + descriptor.key;
+          check.addEventListener("change", () => {
+            const selected = new Set(draft[descriptor.key] || []);
+            if (check.checked) selected.add(row.id); else selected.delete(row.id);
+            draft[descriptor.key] = Array.from(selected);
+            onChange();
+          });
+          grid.append(add(el("label", "activity-multi-item"), check, el("span", "", publicLabel(row))));
+        }
+        choices.append(grid);
+        box.append(choices);
+        continue;
+      }
+      if (descriptor.type === "boolean") control = checkbox(value === true);
+      else if (descriptor.type === "integer") control = number(value, descriptor.min, descriptor.max);
+      else control = select((descriptor.choices || []).map(row => ({ id: row.id, name: publicLabel(row), raw: true })), value);
+      locked(control);
+      control.dataset.activityOption = spec.id + ":" + descriptor.key;
+      control.addEventListener("change", () => {
+        const next = descriptor.type === "boolean" ? control.checked : descriptor.type === "integer"
+          ? (control.value.trim() === "" ? null : Number(control.value))
+          : (descriptor.choices || []).find(row => String(row.id) === control.value).id;
+        draft[descriptor.key] = next;
+        onChange();
+      });
+      box.append(descriptor.type === "boolean" ? switchLabel(publicLabel(descriptor), control) : field(publicLabel(descriptor), control));
+    }
+    return box;
   }
   function renderActivities() {
     heading("Activities", "Choose what your farms should take care of.");
@@ -705,21 +843,38 @@
       main.append(note("Could not load farm choices. Please try again."), button("Try again", () => loadFarmActivities(state.activitySourceId, false), "subtle", "refresh"));
       return;
     }
-    const grid = el("div", "activity-grid");
+    main.append(groupTabs(state.activityGroup, state.activities, id => { state.activityGroup = id; render(); }, "activities"));
+    const grid = el("div", "activity-grid" + (state.activityGroup === "all" ? "" : " activity-grid-filtered")),
+      specs = new Map(activitySpecs().map(spec => [spec.id, spec]));
     for (const group of U.groups) {
+      if (state.activityGroup !== "all" && group.id !== state.activityGroup) continue;
       const rows = state.activities.filter(row => row.group === group.id), card = el("section", "activity-card panel");
+      if (!rows.length) continue;
       card.append(panelTitle(group.name, null, group.icon));
       for (const activity of rows) {
         const check = locked(checkbox(activity.enabled));
         check.id = "activity-" + activity.id;
         check.addEventListener("change", () => {
           state.activities = U.toggle(state.activities, activity.id, check.checked);
-          state.dirty = !U.sameActivityChoices(state.activities, state.activitySavedRows);
+          updateActivityDirty();
           if (!state.dirty) state.activityPendingId = null;
           state.activityExcludedSaved = false;
           render();
         });
-        card.append(switchLabel(activity.name, check));
+        const item = el("div", "activity-item"), spec = specs.get(activity.id);
+        item.append(switchLabel(spec ? publicLabel(spec, "name") : activity.name, check));
+        if (spec && spec.fields.length && state.activityAutomation) {
+          const details = el("details", "activity-options");
+          details.append(el("summary", "", "Activity options"), optionsFields(spec,
+            state.activityOptionsDraft[activity.id], () => {
+              updateActivityDirty();
+              state.activityExcludedSaved = false;
+              const status = document.querySelector("[data-activity-dirty]");
+              if (status) status.textContent = I.t(state.dirty ? "Unsaved changes" : "Only checked farms will be changed.");
+            }));
+          item.append(details);
+        }
+        card.append(item);
       }
       if (group.id === "castle") card.append(el("p", "card-help", "Castle upgrades and resource building upgrades are separate choices."));
       grid.append(card);
@@ -731,7 +886,9 @@
     const help = state.activityExcludedSaved
       ? "The displayed farm was not selected. Its saved choices are unchanged."
       : state.dirty ? "Unsaved changes" : "Only checked farms will be changed.";
-    main.append(grid, add(el("div", "savebar"), add(el("div"), count, el("span", "", help)), save));
+    const status = el("span", "", help); status.dataset.activityDirty = "true";
+    main.append(grid, el("p", "card-help", "Options for enabled activities are copied to the selected farms."),
+      add(el("div", "savebar"), add(el("div"), count, status), save));
   }
   async function loadPreferences(id) {
     if (!id) return;
@@ -768,6 +925,8 @@
       ["fountain", "Fountain", "gem"],
       ["research", "Research", "star"],
       ["heroes", "Heroes", "shield"],
+      ["automation", "Activity options", "spark"],
+      ["balances", "Daily balances", "coin"],
       ["shared", "Other choices", "sliders"],
     ]) {
       const item = button(
@@ -775,7 +934,8 @@
         () => {
           state.tab = id;
           render();
-          if (id !== "shared" && !state.prefs && !state.loadingPrefs)
+          if (id === "balances") loadResourceStats(state.selectedFarmId);
+          else if (id !== "shared" && !state.prefs && !state.loadingPrefs)
             loadPreferences(state.selectedFarmId);
         },
         state.tab === id ? "active" : "",
@@ -799,7 +959,9 @@
     chooser.addEventListener("change", () => {
       state.selectedFarmId = chooser.value;
       state.drafts = {};
-      loadPreferences(chooser.value);
+      state.prefs = null;
+      if (state.tab === "balances") loadResourceStats(chooser.value);
+      else loadPreferences(chooser.value);
     });
     const farm = selectedFarm(),
       selector = add(
@@ -815,6 +977,7 @@
       );
     main.append(selector);
     if (state.total > 8) main.append(pagination());
+    if (state.tab === "balances") { renderResourceStats(); return; }
     const box = el("section", "preference-panel panel");
     if (state.loadingPrefs) {
       box.append(el("div", "loading-copy", "Loading your choices…"));
@@ -827,6 +990,10 @@
         button("Refresh", () => loadPreferences(state.selectedFarmId), "subtle", "refresh"),
       );
       main.append(box);
+      return;
+    }
+    if (state.tab === "automation") {
+      renderActivitySettings(box);
       return;
     }
     const section = state.tab,
@@ -976,6 +1143,125 @@
       })();
     });
     box.append(form);
+    main.append(box);
+  }
+  function renderActivitySettings(box) {
+    const specs = activitySpecs().filter(spec => spec.fields && spec.fields.length),
+      pref = state.prefs.automation;
+    box.append(panelTitle("Activity options", "Set the preferences for this farm.", "sliders"));
+    if (!pref || !specs.length) {
+      box.append(note("No additional choices are available."));
+      main.append(box);
+      return;
+    }
+    if (!state.drafts.automation) state.drafts.automation = U.copy(pref);
+    const draft = state.drafts.automation;
+    draft.options = U.activityOptions(specs, draft.options);
+    box.append(groupTabs(state.settingsGroup, specs, id => { state.settingsGroup = id; render(); }, "settings"));
+    const form = el("form", "activity-settings-form");
+    for (const spec of specs) {
+      if (state.settingsGroup !== "all" && spec.group !== state.settingsGroup) continue;
+      const section = el("section", "activity-settings-card");
+      section.append(el("h3", "", publicLabel(spec, "name")), optionsFields(spec, draft.options[spec.id], () => {}));
+      form.append(section);
+    }
+    const save = locked(button("Save preferences", null, "primary", "check"));
+    save.type = "submit";
+    form.append(save);
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      action(async () => {
+        if (preview || state.mutations) return;
+        const options = U.optionChanges(specs, pref.options, draft.options);
+        if (!U.validOptions(specs, options)) throw new Error("Please check your choices and try again.");
+        if (!Object.keys(options).length) return;
+        const id = state.selectedFarmId, result = await api("/api/farms/" + encodeURIComponent(id) + "/preferences", "PATCH", {
+          section: "automation", version: pref.version, options,
+        });
+        if (String(id) === String(state.selectedFarmId)) {
+          state.prefs = result;
+          state.drafts = U.copy(result);
+        }
+        // Re-open activities from saved data after an independent preferences edit.
+        state.activityFarmsLoaded = false;
+        render();
+        toast("Preferences saved.");
+      })();
+    });
+    box.append(form);
+    main.append(box);
+  }
+  async function loadResourceStats(id) {
+    if (!id) return;
+    const generation = ++statsGeneration, day = state.statsDay;
+    state.statsLoading = true;
+    state.statsError = false;
+    state.statsData = null;
+    if (state.page === "settings" && state.tab === "balances") render();
+    try {
+      const result = preview ? { day, timezone: "UTC", resources: [], samples: 0 } :
+        await api("/api/farms/" + encodeURIComponent(id) + "/resource-stats?date=" + encodeURIComponent(day));
+      if (generation !== statsGeneration || String(id) !== String(state.selectedFarmId) || day !== state.statsDay) return;
+      state.statsData = result;
+    } catch (error) {
+      if (generation !== statsGeneration) return;
+      state.statsError = true;
+      toast(error.message, true);
+    } finally {
+      if (generation === statsGeneration) {
+        state.statsLoading = false;
+        if (state.page === "settings" && state.tab === "balances") render();
+      }
+    }
+  }
+  function renderResourceStats() {
+    const box = el("section", "preference-panel panel"), day = el("input");
+    day.type = "date";
+    day.value = state.statsDay;
+    day.max = new Date().toISOString().slice(0, 10);
+    day.dataset.balanceDate = "true";
+    day.addEventListener("change", () => {
+      if (!day.value || !day.checkValidity()) return;
+      state.statsDay = day.value;
+      loadResourceStats(state.selectedFarmId);
+    });
+    box.append(panelTitle("Daily resource balances", "Net balance change includes spending; records start from the first observation.", "coin"),
+      field("Date (UTC)", day));
+    if (state.statsLoading) box.append(el("p", "loading-copy", "Loading your choices…"));
+    else if (state.statsError) box.append(button("Try again", () => loadResourceStats(state.selectedFarmId), "subtle", "refresh"));
+    else if (!state.statsData || !(state.statsData.resources || []).length) box.append(note("No resource observations for this day."));
+    else {
+      const table = el("table", "balance-table"), head = el("tr");
+      for (const title of ["Resources", "Opening balance", "Latest balance", "Net change"]) head.append(el("th", "", title));
+      table.append(add(el("thead"), head));
+      const body = el("tbody");
+      for (const row of state.statsData.resources) {
+        const line = el("tr"), name = U.choiceLabels.gathering[row.id] ||
+          ({ 1006: "Steel", 1027: "Crystal" }[row.id]) || "Resources";
+        line.append(el("th", "", name));
+        for (const key of ["opening", "latest", "change"]) {
+          const value = Number(row[key]), cell = raw("td", key === "change" ? "balance-change" : "", U.count(row[key]));
+          if (Number.isFinite(value)) {
+            cell.title = new Intl.NumberFormat(I.locale()).format(value);
+            if (key === "change" && value > 0) cell.textContent = "+" + cell.textContent;
+          }
+          cell.dir = "ltr";
+          line.append(cell);
+        }
+        body.append(line);
+      }
+      table.append(body);
+      box.append(table);
+      if (state.statsData.first_seen && state.statsData.last_seen) {
+        const range = el("div", "balance-observations");
+        for (const [key, label] of [["first_seen", "First observation"], ["last_seen", "Latest observation"]]) {
+          const date = new Date(state.statsData[key]);
+          if (!Number.isNaN(date.getTime())) range.append(add(el("p"), el("span", "", label),
+            raw("time", "", date.toLocaleTimeString(I.locale(), { hour: "2-digit", minute: "2-digit", timeZone: "UTC" }) + " UTC")));
+        }
+        box.append(range);
+      }
+    }
     main.append(box);
   }
   function renderShared() {

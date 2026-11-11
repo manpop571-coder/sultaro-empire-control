@@ -16,6 +16,33 @@ assert.equal(
   1,
 );
 assert.equal(U.move, undefined);
+const dynamicCatalog = [{ id: "fresh_service", name: "Fresh service", group: "map" }, ...U.activities];
+const dynamicRows = U.normalizeActivities([{ id: "fresh_service", enabled: true }, { id: "upgrade", enabled: true },
+  { id: "unknown", enabled: true }], dynamicCatalog);
+assert.equal(dynamicRows.length, 22);
+assert.equal(dynamicRows[0].id, "fresh_service");
+assert.equal(dynamicRows[0].enabled, true);
+assert.equal(dynamicRows[1].id, "upgrade");
+assert.equal(U.normalizeActivities([], [{id:"gathering",name:"Resource Gathering",group:"resources"}])[0].name, "Resource gathering");
+assert.ok(!dynamicRows.some(row => row.id === "unknown"));
+assert.deepEqual(U.normalizeActivities([], [dynamicCatalog[0]]).map(row => row.id), ["fresh_service"]);
+const specs = [{id:"fresh_service", fields:[
+  {key:"duration", type:"choice", default:900, choices:[{id:900},{id:3600}]},
+  {key:"count", type:"integer", default:1, min:1, max:6},
+  {key:"buy", type:"boolean", default:false},
+  {key:"items", type:"multi_choice", default:[], choices:[{id:101},{id:102}]}]}];
+const defaults = U.activityOptions(specs, {});
+assert.deepEqual(defaults, {fresh_service:{duration:900,count:1,buy:false,items:[]}});
+assert.deepEqual(U.optionChanges(specs, defaults, {fresh_service:{...defaults.fresh_service,count:3}}), {fresh_service:{count:3}});
+assert.deepEqual(U.optionChanges(specs, defaults, defaults), {});
+assert.ok(U.validOptions(specs, defaults));
+for (const patch of [{duration:"900"}, {count:0}, {count:1.2}, {count:null}, {buy:1}])
+  assert.ok(!U.validOptions(specs, {fresh_service:patch}));
+assert.ok(!U.activityOptions(specs, {fresh_service:{secret:1}}).fresh_service.secret);
+assert.ok(U.validOptions(specs, {fresh_service:{items:[101,102]}}));
+assert.deepEqual(U.optionChanges(specs, {fresh_service:{items:[101,102]}}, {fresh_service:{items:[102,101]}}), {});
+for (const items of [[101,101], [103], ["101"], "101", null])
+  assert.ok(!U.validOptions(specs, {fresh_service:{items}}));
 let choices = U.toggle(U.normalizeActivities([]), "upgrade", true);
 choices = U.toggle(choices, "building_upgrade", true);
 assert.equal(choices.find((row) => row.id === "upgrade").enabled, false);
@@ -81,6 +108,13 @@ assert.equal(I.t("Lord level"), "مستوى السلطان");
 assert.equal(I.t("March 2"), "المسيرة 2");
 assert.equal(I.gameName("pets", 1263), "الصقر");
 assert.equal(I.t("Resource gathering"), "جمع الموارد");
+assert.equal(I.t("Activity options"), "خيارات الأنشطة");
+assert.equal(I.t("Daily balances"), "أرصدة اليوم");
+assert.equal(I.t("Resources & troops"), "الموارد والجنود");
+const marchTemplate = catalogs.ar["March {0} minimum level"];
+delete catalogs.ar["March {0} minimum level"];
+assert.equal(I.t("March 2 minimum level"), "March 2 minimum level");
+catalogs.ar["March {0} minimum level"] = marchTemplate;
 I.setLocale("invalid");
 assert.equal(I.locale(), "en");
 assert.equal(U.petNames, undefined);

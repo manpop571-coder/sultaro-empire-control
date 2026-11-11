@@ -103,7 +103,7 @@
       for (const [pattern, template] of patterns) {
         const match = key.match(pattern);
         if (match) {
-          translated = format(catalog[template], match.slice(1));
+          translated = format(catalog[template] || root.SULTARO_LOCALES.en[template] || template, match.slice(1));
           break;
         }
       }
