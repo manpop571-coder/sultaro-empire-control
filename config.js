@@ -1,4 +1,4 @@
 window.SULTARO_CONFIG = {
-  "apiBaseUrl": "https://screenshot-cell-blond-pdf.trycloudflare.com",
+  "apiBaseUrl": "https://petroleum-bomb-slots-gateway.trycloudflare.com",
   "botUsername": "SULTARO_BOT"
 };
