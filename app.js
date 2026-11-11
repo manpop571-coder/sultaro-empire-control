@@ -500,7 +500,7 @@
           add(
             el("div", "level-seal"),
             el("small", "", "Castle"),
-            raw("strong", "numeric", farm.castle_level || "—"),
+            raw("strong", "numeric", U.castleLevelLabel(farm.castle_level)),
           ),
         ),
       );
@@ -970,7 +970,7 @@
         add(
           el("div", "selection-detail"),
           icon("castle"),
-          el("span", "", farm ? "Level " + (farm.castle_level || "—") : ""),
+          el("span", "", farm ? "Level " + U.castleLevelLabel(farm.castle_level) : ""),
           el("span", "separator", "·"),
           el("span", "", farm ? "Kingdom " + (farm.kingdom || "—") : ""),
         ),
@@ -1269,8 +1269,8 @@
       draft = state.settingsDraft;
     const castle = locked(
       select(
-        Array.from({ length: 30 }, (_, index) => ({ id: index + 1, name: "Level " + (index + 1) })),
-        draft.castle_target_level || 30,
+        U.castleTargets(state.catalog, draft.castle_target_level),
+        draft.castle_target_level || state.catalog.castle_max_level || 30,
       ),
     );
     castle.addEventListener("change", () => (draft.castle_target_level = Number(castle.value)));
@@ -1438,7 +1438,7 @@
       })),
     );
     state.settings = {
-      castle_target_level: 30,
+      castle_target_level: 130,
       training_use_speedups: true,
       merchant_buy_gold: false,
       merchant_refreshes: 0,
@@ -1446,6 +1446,10 @@
     };
     state.settingsDraft = U.copy(state.settings);
     state.catalog = {
+      castle_max_level: 130,
+      castle_targets: [...Array.from({ length: 30 }, (_, index) => index + 1),
+        ...Array.from({ length: 10 }, (_, index) => 40 + index * 10)]
+        .map(id => ({ id, name: "Level " + U.castleLevelLabel(id) })),
       gathering: [
         { id: 0, name: "Disabled" },
         { id: 1, name: "Random" },

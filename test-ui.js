@@ -4,6 +4,14 @@ const assert = require("node:assert/strict"),
   vm = require("node:vm"),
   path = require("node:path");
 const U = require("./ui.js");
+assert.equal(U.castleLevelLabel(30), "30");
+assert.equal(U.castleLevelLabel(75), "P4 +50%");
+assert.equal(U.castleLevelLabel(130), "P10");
+assert.equal(U.castleLevelLabel(null), "—");
+const prestigeCatalog = {castle_max_level:130, castle_targets:[{id:30,name:"Level 30"},{id:130,name:"Level P10"}]};
+assert.deepEqual(U.castleTargets(prestigeCatalog, 75).map(row=>row.id), [30,75,130]);
+assert.equal(prestigeCatalog.castle_targets.length, 2);
+assert.equal(U.castleTargets({},30).at(-1).id,30);
 assert.equal(U.activities.length, 21);
 assert.equal(new Set(U.activities.map((row) => row.id)).size, 21);
 assert.equal(U.normalizeActivities([]).filter((row) => row.enabled).length, 0);

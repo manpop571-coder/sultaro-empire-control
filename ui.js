@@ -156,6 +156,20 @@
     return /^#[0-9a-f]{6}$/i.test(String(value)) ? value : "#c7c2ad";
   }
   const copy = (value) => JSON.parse(JSON.stringify(value));
+  function castleLevelLabel(value) {
+    if (!Number.isInteger(value) || value < 1) return "—";
+    if (value <= 30) return String(value);
+    const prestige = Math.floor((value - 30) / 10), stage = (value - 30) % 10;
+    return (prestige ? "P" + prestige : "30") + (stage ? " +" + stage * 10 + "%" : "");
+  }
+  function castleTargets(catalog, selected) {
+    const rows = Array.isArray(catalog.castle_targets) ? catalog.castle_targets.map(row => ({ ...row })) :
+      Array.from({ length: 30 }, (_, index) => ({ id: index + 1, name: "Level " + (index + 1) }));
+    if (Number.isInteger(selected) && selected >= 1 && selected <= (catalog.castle_max_level || 30) &&
+        !rows.some(row => row.id === selected))
+      rows.push({ id: selected, name: "Level " + castleLevelLabel(selected) });
+    return rows.sort((a, b) => a.id - b.id);
+  }
   function gatheringRanges(value, limits = { min_level: 1, max_level: 8 }) {
     if (value === undefined || value === null)
       return Array.from({ length: 6 }, () => [limits.min_level, limits.max_level]);
@@ -178,6 +192,8 @@
     apiUrl,
     botUrl,
     count,
+    castleLevelLabel,
+    castleTargets,
     safeColor,
     gatheringRanges,
     copy,

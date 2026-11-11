@@ -1,4 +1,4 @@
 window.SULTARO_CONFIG = {
-  "apiBaseUrl": "https://hoped-focusing-cape-genuine.trycloudflare.com",
+  "apiBaseUrl": "https://attract-roles-assessment-rubber.trycloudflare.com",
   "botUsername": "SULTARO_BOT"
 };
